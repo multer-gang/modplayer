@@ -1,10 +1,8 @@
-mod engine;
+use modplayer::format_it::ITModule;
+use modplayer::format_s3m::S3MModule;
+use modplayer::player::{Interpolation, Player};
 
-use engine::format_it::ITModule;
-use engine::format_s3m::S3MModule;
-use engine::player::{Interpolation, Player};
-
-use crate::engine::module::ModuleInterface;
+use modplayer::module::ModuleInterface;
 
 use clap::Parser;
 
@@ -26,7 +24,6 @@ fn main() {
 
     let file = std::fs::File::open(args.file).unwrap();
     let module: S3MModule = S3MModule::load(file).unwrap_or_else(|e| {
-    // let module: ITModule = ITModule::load(file).unwrap_or_else(|e| {
         eprintln!("{}", e);
         std::process::exit(1)
     });

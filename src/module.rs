@@ -12,7 +12,7 @@ pub enum Note {
 
 #[derive(Debug)]
 pub enum Effect {
-    // Based off IT's set
+    // Based off ITs set
     None(u8),
 
     SetSpeed(u8),          // Axx
