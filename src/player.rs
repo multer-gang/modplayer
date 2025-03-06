@@ -4,7 +4,7 @@ use std::{
     io::{stdout, Write}, sync::LazyLock,
 };
 
-use crate::engine::module::{Effect, PlaybackMode};
+use crate::module::{Effect, PlaybackMode};
 
 use super::module::{Column, LoopType, Module, Note, Row, VolEffect};
 use sdl2::audio::AudioCallback;
