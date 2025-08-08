@@ -1,14 +1,11 @@
-use modplayer::format_it::ITModule;
-use modplayer::format_s3m::S3MModule;
+use modplayer::load_module;
 use modplayer::player::{Interpolation, Player};
-
-use modplayer::module::ModuleInterface;
 
 use clap::Parser;
 
 #[derive(Parser, Debug)]
 #[command(name = "Rust module player")]
-#[command(about = "Very barebones tracker module player (IT samples only for now)")]
+#[command(about = "Very barebones tracker module player (IT/S3M)")]
 struct Args {
     file: String,
 
@@ -23,11 +20,10 @@ fn main() {
     let args = Args::parse();
 
     let file = std::fs::File::open(args.file).unwrap();
-    let module: S3MModule = S3MModule::load(file).unwrap_or_else(|e| {
+    let binding = load_module(file).unwrap_or_else(|e| {
         eprintln!("{}", e);
         std::process::exit(1)
     });
-    let binding = module.module();
 
     let mut player: Player = Player::from_module(&binding, 48000);
     player.interpolation = args.interpolation;
