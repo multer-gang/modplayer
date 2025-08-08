@@ -9,7 +9,7 @@ use crate::module::{Effect, PlaybackMode};
 use super::module::{Column, LoopType, Module, Note, Row, VolEffect};
 use sdl2::audio::AudioCallback;
 
-static SINC_LUT: LazyLock<LookupTable> = std::sync::LazyLock::new(|| LookupTable::new(-std::f32::consts::PI*32.0, std::f32::consts::PI*32.0, 512, |x| sinc(x)));
+static SINC_LUT: LazyLock<LookupTable> = std::sync::LazyLock::new(|| LookupTable::new(-std::f32::consts::PI*32.0, std::f32::consts::PI*32.0, 2048, |x| sinc(x)));
 
 struct LookupTable {
     values: Vec<f32>,
@@ -43,11 +43,12 @@ impl LookupTable {
             return self.values[0];
         }
         if x >= self.end {
-            return *self.values.last().unwrap();
+            return self.values[self.values.len() - 1];
         }
 
-        let index = ((x - self.start) / self.step).floor() as usize;
-        let t = (x - (self.start + index as f32 * self.step)) / self.step;
+        let index_f = (x - self.start) / self.step;
+        let index = index_f.floor() as usize;
+        let t = index_f - index as f32;
 
         let y0 = self.values[index];
         let y1 = self.values[index + 1];
@@ -95,10 +96,11 @@ struct Channel<'a> {
 }
 
 fn sinc(x: f32) -> f32 {
-    if x <= 0.0001 && x >= -0.0001 {
+    if x.abs() <= 0.0001 {
         return 1.0;
-    };
-    (x * PI).sin() / (x * PI)
+    }
+    let x_pi = x * PI;
+    x_pi.sin() / x_pi
 }
 
 fn vec_linear(vec: &Vec<i16>, index: f32) -> i16 {
@@ -109,26 +111,41 @@ fn vec_linear(vec: &Vec<i16>, index: f32) -> i16 {
 }
 
 fn vec_sinc(vec: &Vec<i16>, quality: i32, index: f32) -> f32 {
-    let ix = index.floor();
-    let fx = index - ix;
+    let ix = index.floor() as i32;
+    let fx = index - ix as f32;
     let mut tmp = 0f32;
+    let vec_len = vec.len() as i32;
 
     for i in 1 - quality..quality + 1 {
-        tmp += vec[((ix + i as f32 + vec.len() as f32) % vec.len() as f32) as usize] as f32
-            * sinc(i as f32 - fx)
+        let sample_idx = ((ix + i + vec_len) % vec_len) as usize;
+        tmp += vec[sample_idx] as f32 * sinc(i as f32 - fx);
     }
 
     tmp
 }
 
 fn vec_sinc_fast(vec: &Vec<i16>, quality: i32, index: f32) -> f32 {
-    let ix = index.floor();
-    let fx = index - ix;
+    let ix = index.floor() as i32;
+    let fx = index - ix as f32;
     let mut tmp = 0f32;
+    let vec_len = vec.len() as i32;
 
-    for i in 1 - quality..quality + 1 {
-        tmp += vec[((ix + i as f32 + vec.len() as f32) % vec.len() as f32) as usize] as f32
-            * SINC_LUT.interpolate(i as f32 - fx)
+    // Check if we can avoid bounds checking for the inner samples
+    let start_idx = ix + 1 - quality;
+    let end_idx = ix + quality;
+    
+    if start_idx >= 0 && end_idx < vec_len {
+        // Fast path: no bounds checking needed
+        for i in 1 - quality..quality + 1 {
+            let sample_idx = (ix + i) as usize;
+            tmp += vec[sample_idx] as f32 * SINC_LUT.interpolate(i as f32 - fx);
+        }
+    } else {
+        // Slow path: bounds checking required
+        for i in 1 - quality..quality + 1 {
+            let sample_idx = ((ix + i + vec_len) % vec_len) as usize;
+            tmp += vec[sample_idx] as f32 * SINC_LUT.interpolate(i as f32 - fx);
+        }
     }
 
     tmp
