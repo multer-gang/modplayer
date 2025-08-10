@@ -9,7 +9,7 @@ use crate::module::{Effect, PlaybackMode};
 use super::module::{Column, LoopType, Module, Note, Row, VolEffect};
 use sdl2::audio::AudioCallback;
 
-static SINC_LUT: LazyLock<LookupTable> = std::sync::LazyLock::new(|| LookupTable::new(-std::f32::consts::PI*32.0, std::f32::consts::PI*32.0, 512, |x| sinc(x)));
+static SINC_LUT: LazyLock<LookupTable> = std::sync::LazyLock::new(|| LookupTable::new(-std::f32::consts::PI*32.0, std::f32::consts::PI*32.0, 2048, |x| sinc(x)));
 
 struct LookupTable {
     values: Vec<f32>,
@@ -43,11 +43,12 @@ impl LookupTable {
             return self.values[0];
         }
         if x >= self.end {
-            return *self.values.last().unwrap();
+            return self.values[self.values.len() - 1];
         }
 
-        let index = ((x - self.start) / self.step).floor() as usize;
-        let t = (x - (self.start + index as f32 * self.step)) / self.step;
+        let index_f = (x - self.start) / self.step;
+        let index = index_f.floor() as usize;
+        let t = index_f - index as f32;
 
         let y0 = self.values[index];
         let y1 = self.values[index + 1];
@@ -90,15 +91,25 @@ struct Channel<'a> {
     arpeggio_state: bool,
     s3m_effect_memory: u8, // S3M only
 
+    // Vibrato state
+    vibrato_speed: u8,    // upper 4 bits of Hxy / Uxy
+    vibrato_depth: u8,    // lower 4 bits of Hxy / Uxy
+    vibrato_waveform: u8, // 0=sine, 1=ramp down, 2=square (others reserved)
+    vibrato_phase: u16,   // 0..63
+    vibrato_memory: u8,   // IT/ITSample memory for Hxy/Uxy
+    vibrato_on: bool,     // apply vibrato this tick
+    vibrato_is_fine: bool, // fine vibrato scaling
+
     volume: f32,
     // panning: i8,
 }
 
 fn sinc(x: f32) -> f32 {
-    if x <= 0.0001 && x >= -0.0001 {
+    if x.abs() <= 0.0001 {
         return 1.0;
-    };
-    (x * PI).sin() / (x * PI)
+    }
+    let x_pi = x * PI;
+    x_pi.sin() / x_pi
 }
 
 fn vec_linear(vec: &Vec<i16>, index: f32) -> i16 {
@@ -109,26 +120,41 @@ fn vec_linear(vec: &Vec<i16>, index: f32) -> i16 {
 }
 
 fn vec_sinc(vec: &Vec<i16>, quality: i32, index: f32) -> f32 {
-    let ix = index.floor();
-    let fx = index - ix;
+    let ix = index.floor() as i32;
+    let fx = index - ix as f32;
     let mut tmp = 0f32;
+    let vec_len = vec.len() as i32;
 
     for i in 1 - quality..quality + 1 {
-        tmp += vec[((ix + i as f32 + vec.len() as f32) % vec.len() as f32) as usize] as f32
-            * sinc(i as f32 - fx)
+        let sample_idx = ((ix + i + vec_len) % vec_len) as usize;
+        tmp += vec[sample_idx] as f32 * sinc(i as f32 - fx);
     }
 
     tmp
 }
 
 fn vec_sinc_fast(vec: &Vec<i16>, quality: i32, index: f32) -> f32 {
-    let ix = index.floor();
-    let fx = index - ix;
+    let ix = index.floor() as i32;
+    let fx = index - ix as f32;
     let mut tmp = 0f32;
+    let vec_len = vec.len() as i32;
 
-    for i in 1 - quality..quality + 1 {
-        tmp += vec[((ix + i as f32 + vec.len() as f32) % vec.len() as f32) as usize] as f32
-            * SINC_LUT.interpolate(i as f32 - fx)
+    // Check if we can avoid bounds checking for the inner samples
+    let start_idx = ix + 1 - quality;
+    let end_idx = ix + quality;
+    
+    if start_idx >= 0 && end_idx < vec_len {
+        // Fast path: no bounds checking needed
+        for i in 1 - quality..quality + 1 {
+            let sample_idx = (ix + i) as usize;
+            tmp += vec[sample_idx] as f32 * SINC_LUT.interpolate(i as f32 - fx);
+        }
+    } else {
+        // Slow path: bounds checking required
+        for i in 1 - quality..quality + 1 {
+            let sample_idx = ((ix + i + vec_len) % vec_len) as usize;
+            tmp += vec[sample_idx] as f32 * SINC_LUT.interpolate(i as f32 - fx);
+        }
     }
 
     tmp
@@ -146,6 +172,40 @@ fn freq_from_period(period: u16) -> f32 {
 }
 
 impl Channel<'_> {
+    fn vibrato_lfo(&self) -> f32 {
+        let phase = (self.vibrato_phase & 63) as f32 / 64.0;
+        match self.vibrato_waveform & 0x03 {
+            1 => 1.0 - 2.0 * phase,            // ramp down from +1 to -1
+            2 => if phase < 0.5 { 1.0 } else { -1.0 }, // square
+            _ => (phase * 2.0 * PI).sin(),     // sine
+        }
+    }
+
+    // For vibrato
+    fn effective_freq(&self) -> f32 {
+        if !self.vibrato_on || self.vibrato_depth == 0 || self.vibrato_speed == 0 {
+            return self.freq;
+        }
+        match self.module.mode {
+            PlaybackMode::IT | PlaybackMode::ITSample => {
+                let base = (self.vibrato_depth as f32).min(15.0);
+                let amplitude_cents = if self.vibrato_is_fine { base * 6.0 } else { base * 12.0 };
+                let ratio = 2f32.powf(self.vibrato_lfo() * amplitude_cents / 1200.0);
+                self.freq * ratio
+            }
+            _ => {
+                let base = (self.vibrato_depth as f32).min(15.0);
+                let amplitude_period = if self.vibrato_is_fine { base * 1.5 } else { base * 3.0 };
+                let p = period(self.freq);
+                let dp = amplitude_period * self.vibrato_lfo();
+                let mut new_p = p + dp;
+                if new_p < 1.0 { new_p = 1.0; }
+                // Clamp to u16 range just in case
+                let new_p_u16 = new_p.max(1.0).min(u16::MAX as f32) as u16;
+                freq_from_period(new_p_u16)
+            }
+        }
+    }
     fn porta_up(&mut self, linear: bool, ticks_passed: u8, mut value: u8) {
         if value != 0 {
             match self.module.mode {
@@ -446,15 +506,16 @@ impl Channel<'_> {
             return 0;
         };
 
-        if self.backwards {
-            if self.position as u32 <= sample.loop_start {
-                self.backwards = false
+            let eff_freq = self.effective_freq();
+            if self.backwards {
+                if self.position as u32 <= sample.loop_start {
+                    self.backwards = false
+                } else {
+                    self.position -= eff_freq as f64 / samplerate as f64;
+                }
             } else {
-                self.position -= self.freq as f64 / samplerate as f64;
+                self.position += eff_freq as f64 / samplerate as f64;
             }
-        } else {
-            self.position += self.freq as f64 / samplerate as f64;
-        }
 
         if sample.loop_end > 0 {
             if self.position as u32 > sample.loop_end - 1 {
@@ -462,7 +523,8 @@ impl Channel<'_> {
                     LoopType::Forward => self.position = sample.loop_start as f64 + ((self.position - sample.loop_end as f64) % ((sample.loop_end - sample.loop_start) as f64)),
                     LoopType::PingPong => {
                         self.backwards = true;
-                        self.position -= self.freq as f64 / samplerate as f64;
+                        let eff_freq = self.effective_freq();
+                        self.position -= eff_freq as f64 / samplerate as f64;
                     } // self.position -= 1.0 or 2.0 does not work as the program errors with out of bounds
                     _ => {}
                 }
@@ -578,6 +640,14 @@ impl Player<'_> {
                 arpeggio_state: false,
                 s3m_effect_memory: 0,
 
+                vibrato_speed: 0,
+                vibrato_depth: 0,
+                vibrato_waveform: 0,
+                vibrato_phase: 0,
+                vibrato_memory: 0,
+                vibrato_on: false,
+                vibrato_is_fine: false,
+
                 volume: 64.0,
                 // panning: 0
             }),
@@ -647,9 +717,17 @@ impl Player<'_> {
             return;
         };
         let row = &self.module.patterns[self.current_pattern as usize][self.current_row as usize];
+        // Defer applying any Global Volume Slide to avoid borrowing self while a channel is mutably borrowed.
+        let mut pending_global_vol_slide: Option<u8> = None;
 
         for (i, col) in row.iter().enumerate() {
             let channel = &mut self.channels[i];
+
+            // Decide if vibrato should be active on this tick for this channel.
+            let mut want_vibrato = false;
+            if matches!(col.vol, VolEffect::VibratoDepth(_)) {
+                want_vibrato = true;
+            }
 
             match col.effect {
                 Effect::PortaUp(value) => {
@@ -669,14 +747,54 @@ impl Player<'_> {
                 }
                 Effect::VolSlideVibrato(value) => {
                     channel.vol_slide(value, self.ticks_passed);
+                    // Use last vibrato params but activate vibrato this row.
+                    want_vibrato = true;
                 },
                 Effect::VolSlide(value) => channel.vol_slide(value, self.ticks_passed),
                 Effect::Retrig(value) => channel.retrigger(value),
                 Effect::Arpeggio(value) => channel.arpeggio(value),
-                Effect::Vibrato(value) => {
-                    if value != 0 && matches!(self.module.mode, super::module::PlaybackMode::S3M(_)) {
-                        channel.s3m_effect_memory = value;
+                Effect::FineVibrato(value) => {
+                    let mut mem = value;
+                    match self.module.mode {
+                        PlaybackMode::S3M(_) => {
+                            if value != 0 { channel.s3m_effect_memory = value; }
+                            if mem == 0 { mem = channel.s3m_effect_memory; }
+                        }
+                        PlaybackMode::IT | PlaybackMode::ITSample => {
+                            if value != 0 { channel.vibrato_memory = value; }
+                            if mem == 0 { mem = channel.vibrato_memory; }
+                        }
+                        _ => {}
                     }
+                    let spd = (mem >> 4) & 0x0F;
+                    let dep = mem & 0x0F;
+                    if spd != 0 { channel.vibrato_speed = spd; }
+                    if dep != 0 { channel.vibrato_depth = dep; }
+                    channel.vibrato_is_fine = true;
+                    want_vibrato = true;
+                },
+                Effect::SetVibratoWaveform(wave) => {
+                    channel.vibrato_waveform = wave & 0x03;
+                },
+                Effect::Vibrato(value) => {
+                    let mut mem = value;
+                    match self.module.mode {
+                        PlaybackMode::S3M(_) => {
+                            if value != 0 { channel.s3m_effect_memory = value; }
+                            if mem == 0 { mem = channel.s3m_effect_memory; }
+                        }
+                        PlaybackMode::IT | PlaybackMode::ITSample => {
+                            if value != 0 { channel.vibrato_memory = value; }
+                            if mem == 0 { mem = channel.vibrato_memory; }
+                        }
+                        _ => {}
+                    }
+                    let spd = (mem >> 4) & 0x0F;
+                    let dep = mem & 0x0F;
+                    if spd != 0 { channel.vibrato_speed = spd; }
+                    if dep != 0 { channel.vibrato_depth = dep; }
+                    channel.vibrato_is_fine = false;
+                    want_vibrato = true;
                 },
                 Effect::GlobalVolSlide(mut value) => {
                     if value != 0 {
@@ -685,7 +803,8 @@ impl Player<'_> {
                         value = channel.global_volume_memory
                     }
 
-                    self.global_vol_slide(value);
+                    // Defer applying to after the loop to avoid borrow conflicts
+                    pending_global_vol_slide = Some(value);
                 },
                 Effect::None(value) => {
                     if value != 0 && matches!(self.module.mode, super::module::PlaybackMode::S3M(_)) {
@@ -693,6 +812,25 @@ impl Player<'_> {
                     }
                 }
                 _ => {}
+            }
+
+            // Apply vibrato only if this row/tick requests it.
+            channel.vibrato_on = want_vibrato;
+        }
+
+        // Apply deferred Global Volume Slide now that no channel is mutably borrowed
+        if let Some(v) = pending_global_vol_slide {
+            self.global_vol_slide(v);
+        }
+
+        // Advance vibrato LFO phase for active channels each tick.
+        for ch in self.channels.iter_mut() {
+            if ch.vibrato_on {
+                let step: u16 = match self.module.mode {
+                    PlaybackMode::IT | PlaybackMode::ITSample => ch.vibrato_speed as u16,
+                    _ => ch.vibrato_speed as u16,
+                };
+                ch.vibrato_phase = (ch.vibrato_phase + step) & 63;
             }
         }
 
@@ -840,7 +978,9 @@ impl Player<'_> {
                 VolEffect::PortaDown(_) => {}
                 VolEffect::PortaUp(_) => {}
                 VolEffect::TonePorta(_) => {}
-                VolEffect::VibratoDepth(_) => {}
+                VolEffect::VibratoDepth(value) => {
+                    channel.vibrato_depth = value.min(15);
+                }
                 VolEffect::SetPan(_) => {}
                 VolEffect::Volume(volume) => channel.volume = volume as f32,
             }
