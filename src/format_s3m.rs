@@ -125,37 +125,37 @@ impl S3MModule {
         let mut module = S3MModule::default();
 
         // HEADER START
-        reader.read(&mut module.song_name).unwrap();
-        module._unused = reader.read_u32::<LittleEndian>().unwrap();
-        module.order_amount = reader.read_u16::<LittleEndian>().unwrap();
-        module.sample_amount = reader.read_u16::<LittleEndian>().unwrap();
-        module.pattern_amount = reader.read_u16::<LittleEndian>().unwrap();
-        module.flags = reader.read_u16::<LittleEndian>().unwrap();
-        module.tracker_metadata = reader.read_u16::<LittleEndian>().unwrap();
-        module.ffi = reader.read_u16::<LittleEndian>().unwrap();
-        module._scrm = reader.read_u32::<LittleEndian>().unwrap();
+        reader.read(&mut module.song_name)?;
+        module._unused = reader.read_u32::<LittleEndian>()?;
+        module.order_amount = reader.read_u16::<LittleEndian>()?;
+        module.sample_amount = reader.read_u16::<LittleEndian>()?;
+        module.pattern_amount = reader.read_u16::<LittleEndian>()?;
+        module.flags = reader.read_u16::<LittleEndian>()?;
+        module.tracker_metadata = reader.read_u16::<LittleEndian>()?;
+        module.ffi = reader.read_u16::<LittleEndian>()?;
+        module._scrm = reader.read_u32::<LittleEndian>()?;
         if module._scrm != 0x4D524353 {
             return Err(anyhow!("File is not a valid module"))
         };
-        module.global_volume = reader.read_u8().unwrap();
-        module.initial_speed = reader.read_u8().unwrap();
-        module.initial_tempo = reader.read_u8().unwrap();
-        module.mixing_volume = reader.read_u8().unwrap();
-        module.ramping = reader.read_u8().unwrap();
-        module.default_panning = reader.read_u8().unwrap();
-        reader.read(&mut module._unused2).unwrap();
-        module.special = reader.read_u16::<LittleEndian>().unwrap();
-        reader.read(&mut module.channel_settings).unwrap();
+        module.global_volume = reader.read_u8()?;
+        module.initial_speed = reader.read_u8()?;
+        module.initial_tempo = reader.read_u8()?;
+        module.mixing_volume = reader.read_u8()?;
+        module.ramping = reader.read_u8()?;
+        module.default_panning = reader.read_u8()?;
+        reader.read(&mut module._unused2)?;
+        module.special = reader.read_u16::<LittleEndian>()?;
+        reader.read(&mut module.channel_settings)?;
         module.orders.resize(module.order_amount as usize, 255);
-        reader.read(&mut module.orders).unwrap();
+        reader.read(&mut module.orders)?;
 
         module.sample_offsets.resize(module.sample_amount as usize, 0);
-        reader.read_u16_into::<LittleEndian>(&mut module.sample_offsets).unwrap();
+        reader.read_u16_into::<LittleEndian>(&mut module.sample_offsets)?;
 
         module.pattern_offsets.resize(module.pattern_amount as usize, 0);
-        reader.read_u16_into::<LittleEndian>(&mut module.pattern_offsets).unwrap();
+        reader.read_u16_into::<LittleEndian>(&mut module.pattern_offsets)?;
 
-        reader.read(&mut module.channel_panning).unwrap();
+        reader.read(&mut module.channel_panning)?;
         // HEADER END
 
         // SAMPLES START
@@ -165,42 +165,42 @@ impl S3MModule {
                 continue;
             }
 
-            reader.seek(SeekFrom::Start((*offset as u64) << 4)).unwrap();
+            reader.seek(SeekFrom::Start((*offset as u64) << 4))?;
             let mut sample: S3MSample = S3MSample::default();
 
-            sample.sample_type = reader.read_u8().unwrap();
+            sample.sample_type = reader.read_u8()?;
             if sample.sample_type > 1 {
                 return Err(anyhow!("Adlib module detected"))
             }
-            reader.read(&mut sample.filename).unwrap();
-            reader.read(&mut sample.memseg).unwrap();
-            sample.length = reader.read_u32::<LittleEndian>().unwrap();
-            sample.loop_begin = reader.read_u32::<LittleEndian>().unwrap();
-            sample.loop_end = reader.read_u32::<LittleEndian>().unwrap();
-            sample.volume = reader.read_u8().unwrap();
-            sample._unused = reader.read_u8().unwrap();
-            sample.packed = reader.read_u8().unwrap();
+            reader.read(&mut sample.filename)?;
+            reader.read(&mut sample.memseg)?;
+            sample.length = reader.read_u32::<LittleEndian>()?;
+            sample.loop_begin = reader.read_u32::<LittleEndian>()?;
+            sample.loop_end = reader.read_u32::<LittleEndian>()?;
+            sample.volume = reader.read_u8()?;
+            sample._unused = reader.read_u8()?;
+            sample.packed = reader.read_u8()?;
             if sample.packed == 1 {
                 return Err(anyhow!("Compressed samples detected"))
             }
-            sample.flags = reader.read_u8().unwrap();
-            sample.c4speed = reader.read_u32::<LittleEndian>().unwrap();
-            reader.seek(SeekFrom::Current(4)).unwrap();
-            sample.int_gp = reader.read_u16::<LittleEndian>().unwrap();
-            reader.seek(SeekFrom::Current(6)).unwrap();
-            reader.read(&mut sample.sample_name).unwrap();
+            sample.flags = reader.read_u8()?;
+            sample.c4speed = reader.read_u32::<LittleEndian>()?;
+            reader.seek(SeekFrom::Current(4))?;
+            sample.int_gp = reader.read_u16::<LittleEndian>()?;
+            reader.seek(SeekFrom::Current(6))?;
+            reader.read(&mut sample.sample_name)?;
 
             let sampledata_offset: u32 =
                 ((sample.memseg[1] as u32) << 4) |
                 ((sample.memseg[2] as u32) << 12) |
                 ((sample.memseg[0] as u32) << 20);
-            reader.seek(SeekFrom::Start(sampledata_offset as u64)).unwrap();
+            reader.seek(SeekFrom::Start(sampledata_offset as u64))?;
 
             if sample.flags & 0b100 != 0 {
                 // Sample is 16 bit
                 let mut data: Vec<u8> = Vec::with_capacity(sample.length as usize * 2);
-                data.resize((sample.length * 2).try_into().unwrap(), 0);
-                reader.read_exact(&mut data).unwrap();
+                data.resize((sample.length * 2).try_into()?, 0);
+                reader.read_exact(&mut data)?;
 
                 if module.ffi == 1 {
                     // Signed?
@@ -217,8 +217,8 @@ impl S3MModule {
             } else {
                 // Sample is 8 bit
                 let mut data: Vec<u8> = Vec::with_capacity(sample.length as usize);
-                data.resize((sample.length).try_into().unwrap(), 0);
-                reader.read_exact(&mut data).unwrap();
+                data.resize((sample.length).try_into()?, 0);
+                reader.read_exact(&mut data)?;
 
                 if module.ffi == 1 {
                     // Signed?
@@ -243,27 +243,27 @@ impl S3MModule {
             }
 
             // println!("Offset: {}", offset);
-            reader.seek(SeekFrom::Start(((*offset as u64) << 4) + 2)).unwrap();
+            reader.seek(SeekFrom::Start(((*offset as u64) << 4) + 2))?;
             let mut pattern = [S3MRow::default();64];
 
             let mut row = 0usize;
             let mut channel;
             'unpacking: loop {
-                let packed_byte = reader.read_u8().unwrap();
+                let packed_byte = reader.read_u8()?;
                 if packed_byte == 0 {
                     row += 1;
                 }
                 channel = (packed_byte & 31) as usize;
                 if packed_byte & 32 != 0 { // note and instrument in the next 2 bytes
-                    pattern[row][channel].note = reader.read_u8().unwrap();
-                    pattern[row][channel].instrument = reader.read_u8().unwrap();
+                    pattern[row][channel].note = reader.read_u8()?;
+                    pattern[row][channel].instrument = reader.read_u8()?;
                 }
                 if packed_byte & 64 != 0 { // volume in the next byte
-                    pattern[row][channel].vol = reader.read_u8().unwrap();
+                    pattern[row][channel].vol = reader.read_u8()?;
                 }
                 if packed_byte & 128 != 0 { // effect in the next 2 bytes
-                    pattern[row][channel].effect = reader.read_u8().unwrap();
-                    pattern[row][channel].effect_value = reader.read_u8().unwrap();
+                    pattern[row][channel].effect = reader.read_u8()?;
+                    pattern[row][channel].effect_value = reader.read_u8()?;
                 }
                 if row == 64 {
                     module.patterns.push(pattern);

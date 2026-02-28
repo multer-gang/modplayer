@@ -338,86 +338,86 @@ impl ITModule {
 
         // --- HEADER START ---
         // 0000
-        reader.read_exact(&mut module._impm).unwrap();
-        match std::str::from_utf8(&module._impm).unwrap() {
+        reader.read_exact(&mut module._impm)?;
+        match std::str::from_utf8(&module._impm)? {
             "IMPM" => {}
             _ => return Err(anyhow!("File is not a valid module")),
         };
-        reader.read_exact(&mut module.song_name).unwrap();
+        reader.read_exact(&mut module.song_name)?;
 
         // 0010
         let mut philigt_buf = [0u8; 2];
-        reader.read_exact(&mut philigt_buf).unwrap();
+        reader.read_exact(&mut philigt_buf)?;
         module._pattern_highlight = u16::from_le_bytes(philigt_buf);
 
         // 0020
         let mut ordnum_buf = [0u8; 2];
-        reader.read_exact(&mut ordnum_buf).unwrap();
+        reader.read_exact(&mut ordnum_buf)?;
         module.order_amount = u16::from_le_bytes(ordnum_buf);
         let mut insnum_buf = [0u8; 2];
-        reader.read_exact(&mut insnum_buf).unwrap();
+        reader.read_exact(&mut insnum_buf)?;
         module.instrument_amount = u16::from_le_bytes(insnum_buf);
         let mut smpnum_buf = [0u8; 2];
-        reader.read_exact(&mut smpnum_buf).unwrap();
+        reader.read_exact(&mut smpnum_buf)?;
         module.sample_amount = u16::from_le_bytes(smpnum_buf);
         let mut ptnnum_buf = [0u8; 2];
-        reader.read_exact(&mut ptnnum_buf).unwrap();
+        reader.read_exact(&mut ptnnum_buf)?;
         module.pattern_amount = u16::from_le_bytes(ptnnum_buf);
         let mut trackerid_buf = [0u8; 2];
-        reader.read_exact(&mut trackerid_buf).unwrap();
+        reader.read_exact(&mut trackerid_buf)?;
         module.tracker_id = u16::from_le_bytes(trackerid_buf);
         let mut formatid_buf = [0u8; 2];
-        reader.read_exact(&mut formatid_buf).unwrap();
+        reader.read_exact(&mut formatid_buf)?;
         module.format_id = u16::from_le_bytes(formatid_buf);
         let mut flags_buf = [0u8; 2];
-        reader.read_exact(&mut flags_buf).unwrap();
+        reader.read_exact(&mut flags_buf)?;
         module.flags = u16::from_le_bytes(flags_buf);
         let mut special_buf = [0u8; 2];
-        reader.read_exact(&mut special_buf).unwrap();
+        reader.read_exact(&mut special_buf)?;
         module.special = u16::from_le_bytes(special_buf);
 
         // 0030
         let mut gv_buf = [0u8];
-        reader.read_exact(&mut gv_buf).unwrap();
+        reader.read_exact(&mut gv_buf)?;
         module.global_volume = gv_buf[0];
         let mut mv_buf = [0u8];
-        reader.read_exact(&mut mv_buf).unwrap();
+        reader.read_exact(&mut mv_buf)?;
         module.mixing_volume = mv_buf[0];
         let mut is_buf = [0u8];
-        reader.read_exact(&mut is_buf).unwrap();
+        reader.read_exact(&mut is_buf)?;
         module.initial_speed = is_buf[0];
         let mut it_buf = [0u8];
-        reader.read_exact(&mut it_buf).unwrap();
+        reader.read_exact(&mut it_buf)?;
         module.initial_tempo = it_buf[0];
         let mut sep_buf = [0u8];
-        reader.read_exact(&mut sep_buf).unwrap();
+        reader.read_exact(&mut sep_buf)?;
         module.separation = sep_buf[0];
         let mut pwd_buf = [0u8];
-        reader.read_exact(&mut pwd_buf).unwrap();
+        reader.read_exact(&mut pwd_buf)?;
         module.pitch_wheel_depth = pwd_buf[0];
         let mut msglgth_buf = [0u8; 2];
-        reader.read_exact(&mut msglgth_buf).unwrap();
+        reader.read_exact(&mut msglgth_buf)?;
         module.message_length = u16::from_le_bytes(msglgth_buf);
         let mut msgoffset_buf = [0u8; 4];
-        reader.read_exact(&mut msgoffset_buf).unwrap();
+        reader.read_exact(&mut msgoffset_buf)?;
         module.message_offset = u32::from_le_bytes(msgoffset_buf);
-        reader.read_exact(&mut module._reserved).unwrap();
+        reader.read_exact(&mut module._reserved)?;
 
         // 0040
-        reader.read_exact(&mut module.channel_pan).unwrap();
+        reader.read_exact(&mut module.channel_pan)?;
 
         // 0080
-        reader.read_exact(&mut module.channel_volume).unwrap();
+        reader.read_exact(&mut module.channel_volume)?;
 
         // 00C0
         module.orders.resize(module.order_amount as usize, 0);
-        reader.read_exact(&mut module.orders).unwrap();
+        reader.read_exact(&mut module.orders)?;
 
         // xxxx (Offsets)
         // Instruments
         let mut io_buf = Vec::<u8>::with_capacity((module.instrument_amount * 4) as usize);
         io_buf.resize((module.instrument_amount * 4) as usize, 0);
-        reader.read_exact(&mut io_buf).unwrap();
+        reader.read_exact(&mut io_buf)?;
         module.instrument_offsets = io_buf
             .chunks(4)
             .map(|x| u32::from_le_bytes(x.try_into().unwrap()))
@@ -426,7 +426,7 @@ impl ITModule {
         // Samples
         let mut so_buf = Vec::<u8>::with_capacity((module.sample_amount * 4) as usize);
         so_buf.resize((module.sample_amount * 4) as usize, 0);
-        reader.read_exact(&mut so_buf).unwrap();
+        reader.read_exact(&mut so_buf)?;
         module.sample_offsets = so_buf
             .chunks(4)
             .map(|x| u32::from_le_bytes(x.try_into().unwrap()))
@@ -435,7 +435,7 @@ impl ITModule {
         // Patterns
         let mut po_buf = Vec::<u8>::with_capacity((module.pattern_amount * 4) as usize);
         po_buf.resize((module.pattern_amount * 4) as usize, 0);
-        reader.read_exact(&mut po_buf).unwrap();
+        reader.read_exact(&mut po_buf)?;
         module.pattern_offsets = po_buf
             .chunks(4)
             .map(|x| u32::from_le_bytes(x.try_into().unwrap()))
@@ -444,46 +444,46 @@ impl ITModule {
 
         // --- INSTRUMENTS START ---
         for offset in &module.instrument_offsets {
-            reader.seek(SeekFrom::Start(*offset as u64)).unwrap();
+            reader.seek(SeekFrom::Start(*offset as u64))?;
             let mut instrument = ITInstrument::default();
 
             // 0000
-            reader.read_exact(&mut instrument._impi).unwrap();
-            reader.read_exact(&mut instrument.filename).unwrap();
+            reader.read_exact(&mut instrument._impi)?;
+            reader.read_exact(&mut instrument.filename)?;
 
             // 0010
-            instrument._00h = reader.read_u8().unwrap();
-            instrument.new_note_action = reader.read_u8().unwrap();
-            instrument.duplicate_check_type = reader.read_u8().unwrap();
-            instrument.duplicate_check_action = reader.read_u8().unwrap();
-            instrument.fadeout = reader.read_u16::<LittleEndian>().unwrap();
-            instrument.pitch_pan_sepraration = reader.read_i8().unwrap();
-            instrument.pitch_pan_center = reader.read_u8().unwrap();
-            instrument.global_volume = reader.read_u8().unwrap();
-            instrument.default_pan = reader.read_u8().unwrap();
-            instrument.random_volume = reader.read_u8().unwrap();
-            instrument.random_pan = reader.read_u8().unwrap();
-            instrument._tracker_version = reader.read_u16::<LittleEndian>().unwrap();
-            instrument._number_of_samples = reader.read_u8().unwrap();
-            instrument._x = reader.read_u8().unwrap();
+            instrument._00h = reader.read_u8()?;
+            instrument.new_note_action = reader.read_u8()?;
+            instrument.duplicate_check_type = reader.read_u8()?;
+            instrument.duplicate_check_action = reader.read_u8()?;
+            instrument.fadeout = reader.read_u16::<LittleEndian>()?;
+            instrument.pitch_pan_sepraration = reader.read_i8()?;
+            instrument.pitch_pan_center = reader.read_u8()?;
+            instrument.global_volume = reader.read_u8()?;
+            instrument.default_pan = reader.read_u8()?;
+            instrument.random_volume = reader.read_u8()?;
+            instrument.random_pan = reader.read_u8()?;
+            instrument._tracker_version = reader.read_u16::<LittleEndian>()?;
+            instrument._number_of_samples = reader.read_u8()?;
+            instrument._x = reader.read_u8()?;
 
             // 0020
-            reader.read_exact(&mut instrument.instrument_name).unwrap();
+            reader.read_exact(&mut instrument.instrument_name)?;
 
             // 0030
-            instrument.initial_filter_cutoff = reader.read_u8().unwrap();
-            instrument.initial_filter_resonance = reader.read_u8().unwrap();
-            instrument.midi_channel = reader.read_u8().unwrap();
-            instrument.midi_program = reader.read_u8().unwrap();
-            instrument.midi_bank = reader.read_u16::<LittleEndian>().unwrap();
+            instrument.initial_filter_cutoff = reader.read_u8()?;
+            instrument.initial_filter_resonance = reader.read_u8()?;
+            instrument.midi_channel = reader.read_u8()?;
+            instrument.midi_program = reader.read_u8()?;
+            instrument.midi_bank = reader.read_u16::<LittleEndian>()?;
 
             // 0040
             for _ in 0..120 {
                 // 240 bytes
                 let mut pair = ITNoteSamplePair::default();
 
-                pair.note = reader.read_u8().unwrap();
-                pair.sample = reader.read_u8().unwrap();
+                pair.note = reader.read_u8()?;
+                pair.sample = reader.read_u8()?;
                 instrument.note_sample_table.push(pair);
             }
 
@@ -491,18 +491,18 @@ impl ITModule {
             for i in 0..3 as usize {
                 let mut env = ITEnvelope::default();
 
-                env.flag = reader.read_u8().unwrap();
-                env.node_amount = reader.read_u8().unwrap();
-                env.loop_begin = reader.read_u8().unwrap();
-                env.loop_end = reader.read_u8().unwrap();
-                env.sustain_loop_begin = reader.read_u8().unwrap();
-                env.sustain_loop_end = reader.read_u8().unwrap();
+                env.flag = reader.read_u8()?;
+                env.node_amount = reader.read_u8()?;
+                env.loop_begin = reader.read_u8()?;
+                env.loop_end = reader.read_u8()?;
+                env.sustain_loop_begin = reader.read_u8()?;
+                env.sustain_loop_end = reader.read_u8()?;
 
                 for _ in 0..env.node_amount {
                     let mut node = ITEnvelopeNode::default();
 
-                    node.y = reader.read_u8().unwrap();
-                    node.tick = reader.read_u16::<LittleEndian>().unwrap();
+                    node.y = reader.read_u8()?;
+                    node.tick = reader.read_u16::<LittleEndian>()?;
                     env.nodes.push(node);
                 }
 
@@ -515,52 +515,52 @@ impl ITModule {
 
         // --- SAMPLES START ---
         for offset in module.sample_offsets.as_slice() {
-            reader.seek(SeekFrom::Start(*offset as u64)).unwrap();
+            reader.seek(SeekFrom::Start(*offset as u64))?;
             let mut sample = ITSample::default();
 
             // 0000
-            reader.read_exact(&mut sample._imps).unwrap();
-            reader.read_exact(&mut sample.filename).unwrap();
+            reader.read_exact(&mut sample._imps)?;
+            reader.read_exact(&mut sample.filename)?;
 
             // 0010
-            sample._00h = reader.read_u8().unwrap();
-            sample.global_volume = reader.read_u8().unwrap();
-            sample.flags = reader.read_u8().unwrap();
-            sample.volume = reader.read_u8().unwrap();
+            sample._00h = reader.read_u8()?;
+            sample.global_volume = reader.read_u8()?;
+            sample.flags = reader.read_u8()?;
+            sample.volume = reader.read_u8()?;
 
-            reader.read_exact(&mut sample.sample_name).unwrap();
+            reader.read_exact(&mut sample.sample_name)?;
 
             // 0020
-            sample.convert = reader.read_u8().unwrap();
-            sample.default_pan = reader.read_u8().unwrap();
+            sample.convert = reader.read_u8()?;
+            sample.default_pan = reader.read_u8()?;
 
             // 0030
-            sample.length = reader.read_u32::<LittleEndian>().unwrap();
-            sample.loop_begin = reader.read_u32::<LittleEndian>().unwrap();
-            sample.loop_end = reader.read_u32::<LittleEndian>().unwrap();
-            sample.c5_speed = reader.read_u32::<LittleEndian>().unwrap();
+            sample.length = reader.read_u32::<LittleEndian>()?;
+            sample.loop_begin = reader.read_u32::<LittleEndian>()?;
+            sample.loop_end = reader.read_u32::<LittleEndian>()?;
+            sample.c5_speed = reader.read_u32::<LittleEndian>()?;
 
             // 0040
-            sample.sustain_loop_begin = reader.read_u32::<LittleEndian>().unwrap();
-            sample.sustain_loop_end = reader.read_u32::<LittleEndian>().unwrap();
-            sample.sample_pointer = reader.read_u32::<LittleEndian>().unwrap();
+            sample.sustain_loop_begin = reader.read_u32::<LittleEndian>()?;
+            sample.sustain_loop_end = reader.read_u32::<LittleEndian>()?;
+            sample.sample_pointer = reader.read_u32::<LittleEndian>()?;
 
-            sample.vibrato_speed = reader.read_u8().unwrap();
-            sample.vibrato_depth = reader.read_u8().unwrap();
-            sample.vibrato_rate = reader.read_u8().unwrap();
-            sample.vibrato_type = reader.read_u8().unwrap();
+            sample.vibrato_speed = reader.read_u8()?;
+            sample.vibrato_depth = reader.read_u8()?;
+            sample.vibrato_rate = reader.read_u8()?;
+            sample.vibrato_type = reader.read_u8()?;
 
             // Data
             reader
                 .seek(SeekFrom::Start(sample.sample_pointer as u64))
-                .unwrap();
+                ?;
 
             if sample.flags & 0b1000 == 0 {
             if sample.flags & 0b10 != 0 {
                 // Sample is 16 bit
                 let mut data: Vec<u8> = Vec::with_capacity(sample.length as usize * 2);
-                data.resize((sample.length * 2).try_into().unwrap(), 0);
-                reader.read_exact(&mut data).unwrap();
+                data.resize((sample.length * 2).try_into()?, 0);
+                reader.read_exact(&mut data)?;
 
                 if sample.convert & 0b1 != 0 {
                     // Signed?
@@ -577,8 +577,8 @@ impl ITModule {
             } else {
                 // Sample is 8 bit
                 let mut data: Vec<u8> = Vec::with_capacity(sample.length as usize);
-                data.resize((sample.length).try_into().unwrap(), 0);
-                reader.read_exact(&mut data).unwrap();
+                data.resize((sample.length).try_into()?, 0);
+                reader.read_exact(&mut data)?;
 
                 if sample.convert & 0b1 != 0 {
                     // Signed?
@@ -604,17 +604,17 @@ impl ITModule {
             }
 
             // println!("Offset: {}", offset);
-            reader.seek(SeekFrom::Start(*offset as u64)).unwrap();
+            reader.seek(SeekFrom::Start(*offset as u64))?;
             let mut pattern = ITPattern::default();
 
-            pattern.length = reader.read_u16::<LittleEndian>().unwrap();
-            pattern.rows_amount = reader.read_u16::<LittleEndian>().unwrap();
+            pattern.length = reader.read_u16::<LittleEndian>()?;
+            pattern.rows_amount = reader.read_u16::<LittleEndian>()?;
             // println!("Rows: {}", pattern.rows_amount);
-            reader.read_exact(&mut pattern._x).unwrap(); // skip padding(?)
+            reader.read_exact(&mut pattern._x)?; // skip padding(?)
 
             let mut pattern_bytes = Vec::<u8>::with_capacity(pattern.length.into());
             pattern_bytes.resize(pattern.length.into(), 0);
-            reader.read_exact(&mut pattern_bytes).unwrap();
+            reader.read_exact(&mut pattern_bytes)?;
 
             pattern.parse_packed_bytes(&mut pattern_bytes.as_slice());
 
