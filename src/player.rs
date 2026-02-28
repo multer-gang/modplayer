@@ -5,6 +5,7 @@ use std::{
 };
 
 use crate::module::{Effect, PlaybackMode};
+use crate::stm_tools::calculate_stm_tempo;
 
 use super::module::{Column, LoopType, Module, Note, Row, VolEffect};
 use sdl2::audio::AudioCallback;
@@ -509,7 +510,8 @@ impl Channel<'_> {
             let eff_freq = self.effective_freq();
             if self.backwards {
                 if self.position as u32 <= sample.loop_start {
-                    self.backwards = false
+                    self.backwards = false;
+                    self.position = sample.loop_start as f64
                 } else {
                     self.position -= eff_freq as f64 / samplerate as f64;
                 }
@@ -990,6 +992,10 @@ impl Player<'_> {
                 Effect::SetTempo(tempo) => self.current_tempo = tempo,
                 Effect::Arpeggio(_) => channel.arpeggio_selector = 0,
                 Effect::SetGlobalVol(vol) => if vol <= max_global_volume(&self.module.mode) {self.global_volume = vol},
+                Effect::STMTempo(tempo) => {
+                    self.current_speed = tempo >> 4;
+                    self.current_tempo = calculate_stm_tempo(tempo);
+                },
                 _ => {}
             }
 
@@ -1188,5 +1194,7 @@ fn format_effect(effect: &Effect) -> String {
         Effect::FineSetPan(value) => format!("\x1b[96mX{:0>2X}", value),      // Xxx
         Effect::Panbrello(value) => format!("\x1b[96mY{:0>2X}", value),       // Yxy
         Effect::MIDIMacro(value) => format!("\x1b[97mZ{:0>2X}", value),       // Zxx
+
+        Effect::STMTempo(value) => format!("\x1b[91mA{:0>2X}", value),        // ST2: Axx
     }
 }

@@ -75,6 +75,7 @@ pub enum Effect {
     Panbrello(u8),      // Yxy
     MIDIMacro(u8),      // Zxx
                         // SmoothMIDIMacro(u8) // \xx, ModPlug hack
+    STMTempo(u8),
 }
 
 impl Default for Effect {
