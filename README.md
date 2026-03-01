@@ -1,6 +1,6 @@
 # modplayer
 
-An engine for playing back tracker modules (currently only IT/Sample mode with experimental support for S3M) written in Rust, made for the fun of it.
+An engine for playing back tracker modules (currently only IT/Sample mode with experimental support for S3M and STM) written in Rust, made for the fun of it.
 
 ## License
 
@@ -8,5 +8,5 @@ An engine for playing back tracker modules (currently only IT/Sample mode with e
 
 ## Acknowledgements
 
-* Psi/Future Crew - Scream Tracker 3 module format documentation
+* Psi/Future Crew - Scream Tracker 2 and 3 module format documentation
 * Jeffrey Lim - Impulse Tracker format documentation
