@@ -1,12 +1,9 @@
 use super::module::{
     Column, Effect, LoopType, Module, ModuleInterface, Note, Pattern, PlaybackMode, Row, S3MOptions, Sample, VolEffect
 };
-use byteorder::{LittleEndian, NativeEndian, ReadBytesExt};
-use std::{
-    io::{self, Read, SeekFrom},
-    slice,
-};
-use anyhow::{Result, anyhow};
+use byteorder::{LittleEndian, ReadBytesExt};
+use std::io::{self, SeekFrom};
+use anyhow::{Result, bail};
 
 #[derive(Debug)]
 pub struct S3MModule {
@@ -135,7 +132,7 @@ impl S3MModule {
         module.ffi = reader.read_u16::<LittleEndian>()?;
         module._scrm = reader.read_u32::<LittleEndian>()?;
         if module._scrm != 0x4D524353 {
-            return Err(anyhow!("File is not a valid module"))
+            bail!("File is not a valid module");
         };
         module.global_volume = reader.read_u8()?;
         module.initial_speed = reader.read_u8()?;
@@ -170,7 +167,7 @@ impl S3MModule {
 
             sample.sample_type = reader.read_u8()?;
             if sample.sample_type > 1 {
-                return Err(anyhow!("Adlib module detected"))
+                bail!("Adlib module detected");
             }
             reader.read(&mut sample.filename)?;
             reader.read(&mut sample.memseg)?;
@@ -181,7 +178,7 @@ impl S3MModule {
             sample._unused = reader.read_u8()?;
             sample.packed = reader.read_u8()?;
             if sample.packed == 1 {
-                return Err(anyhow!("Compressed samples detected"))
+                bail!("Compressed samples detected");
             }
             sample.flags = reader.read_u8()?;
             sample.c4speed = reader.read_u32::<LittleEndian>()?;

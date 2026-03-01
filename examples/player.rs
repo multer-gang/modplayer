@@ -5,7 +5,7 @@ use clap::Parser;
 
 #[derive(Parser, Debug)]
 #[command(name = "Rust module player")]
-#[command(about = "Very barebones tracker module player (IT/S3M)")]
+#[command(about = "Very barebones tracker module player (IT/S3M/STM)")]
 struct Args {
     file: String,
 

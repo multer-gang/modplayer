@@ -2,12 +2,9 @@ use super::module::{
     Column, Effect, LoopType, Module, ModuleInterface, Note, Pattern, PlaybackMode, Row,
     S3MOptions, Sample, VolEffect,
 };
-use anyhow::{anyhow, Result};
-use byteorder::{LittleEndian, NativeEndian, ReadBytesExt};
-use std::{
-    io::{self, Read, SeekFrom},
-    slice,
-};
+use anyhow::{bail, Result};
+use byteorder::{LittleEndian, ReadBytesExt};
+use std::io::{self, SeekFrom};
 use crate::stm_tools::calculate_stm_tempo;
 
 fn translate_early_tempo(tempo: u8) -> u8 {
@@ -100,20 +97,20 @@ impl STMModule {
         for letter in module.tracker_name {
             // I don't feel like being particularly strict here...
             if !letter.is_ascii() {
-                return Err(anyhow!("File is not a valid module"));
+                bail!("File is not a valid module");
             }
         }
         if module.dos_eof != 0x02 && module.dos_eof != 0x1A {
-            return Err(anyhow!("Invalid end of ID"));
+            bail!("Invalid end of ID");
         }
         // 1 = song, does not have samples
         // 2 = module, has samples
         // 2 == better. :)
         module.file_type = reader.read_u8()?;
         match module.file_type {
-            1 => return Err(anyhow!("STM songs are not supported")),
+            1 => bail!("STM songs are not supported"),
             2 => {}
-            _ => return Err(anyhow!("Invalid STM file type")),
+            _ => bail!("Invalid STM file type"),
         }
         module.version_major = reader.read_u8()?;
         module.version_minor = reader.read_u8()?;
@@ -123,7 +120,7 @@ impl STMModule {
                 || module.version_minor == 20
                 || module.version_minor == 21)
         {
-            return Err(anyhow!("Invalid STM version"));
+            bail!("Invalid STM version");
         }
         module.initial_tempo = reader.read_u8()?;
         module.pattern_amount = reader.read_u8()?;
@@ -151,6 +148,11 @@ impl STMModule {
             sample.c4speed = reader.read_u16::<LittleEndian>()?;
             reader.seek(SeekFrom::Current(6))?;
 
+            if sample.loop_end != 0xFFFF && sample.loop_end > sample.length {
+                sample.length = sample.loop_end;
+            }
+
+            // sample volume 0 is actually invalid in ST2
             if sample.volume != 0 {
                 let sampledata_offset = (sample.memseg as u64) << 4;
                 reader
@@ -240,7 +242,7 @@ impl ModuleInterface for STMModule {
             .iter()
             .map(|s| Sample {
                 base_frequency: s.c4speed as u32,
-                loop_type: if s.loop_end < 0xFFFF {
+                loop_type: if s.loop_end < 0xFFFF && s.loop_end > s.loop_begin && s.loop_end <= s.length {
                     LoopType::Forward
                 } else {
                     LoopType::None
@@ -269,10 +271,10 @@ impl ModuleInterface for STMModule {
                             255 => Note::None,
                             254 => Note::Cut,
                             _ => {
-                                let octave = (c.note >> 4) + 2;
+                                let octave = (c.note >> 4) + 3;
                                 let pitch = c.note & 0xF;
 
-                                Note::On(octave * 12 + pitch + 12)
+                                Note::On(octave * 12 + pitch)
                             }
                         },
                         instrument: c.instrument,

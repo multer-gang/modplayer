@@ -7,7 +7,7 @@ use std::{
     io::{self, Read, SeekFrom},
     slice,
 };
-use anyhow::{anyhow, Result};
+use anyhow::{bail, Result};
 
 #[derive(Debug)]
 pub struct ITModule {
@@ -341,7 +341,7 @@ impl ITModule {
         reader.read_exact(&mut module._impm)?;
         match std::str::from_utf8(&module._impm)? {
             "IMPM" => {}
-            _ => return Err(anyhow!("File is not a valid module")),
+            _ => bail!("File is not a valid module"),
         };
         reader.read_exact(&mut module.song_name)?;
 

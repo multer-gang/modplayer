@@ -7,7 +7,7 @@ use std::{
 use crate::module::{Effect, PlaybackMode};
 use crate::stm_tools::calculate_stm_tempo;
 
-use super::module::{Column, LoopType, Module, Note, Row, VolEffect};
+use super::module::{Column, LoopType, Module, Note, VolEffect};
 use sdl2::audio::AudioCallback;
 
 static SINC_LUT: LazyLock<LookupTable> = std::sync::LazyLock::new(|| LookupTable::new(-std::f32::consts::PI*32.0, std::f32::consts::PI*32.0, 2048, |x| sinc(x)));
@@ -162,7 +162,8 @@ fn vec_sinc_fast(vec: &Vec<i16>, quality: i32, index: f32) -> f32 {
 }
 
 // const PERIOD: f32 = 3579545.25;
-const PERIOD: f32 = 14317056.0;
+// const PERIOD: f32 = 14317056.0;
+const PERIOD: f32 = 14187580.0;
 
 fn period(freq: f32) -> f32 {
     PERIOD / freq
@@ -948,11 +949,8 @@ impl Player<'_> {
         let row = &self.module.patterns[self.current_pattern as usize][self.current_row as usize];
         let mut row_string = String::new();
         row_string.push_str(&format!("{:0>2} | ", self.current_row));
-        for (i, col) in row.iter().enumerate() {
+        for (_i, col) in row.iter().enumerate() {
             row_string.push_str(&format!("{} \x1b[0m| ", &format_col(col)));
-            // if i >= 16 {
-            //     break;
-            // }
         }
         println!("{}", row_string);
 
@@ -964,11 +962,6 @@ impl Player<'_> {
 
         for (i, col) in row.iter().enumerate() {
             let channel = &mut self.channels[i];
-
-            /* match col.effect {
-                _ => {}
-                //TODO effects
-            } */
 
             match col.vol {
                 // TODO volume commands
