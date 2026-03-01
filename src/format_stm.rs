@@ -176,7 +176,7 @@ impl STMModule {
         // SAMPLES END
 
         reader.seek(SeekFrom::Start(0x410))?;
-        for i in 0..128 {
+        for _i in 0..128 {
             let byte = reader.read_u8()?;
             // Any patterns above 63 is undefined behavior
             if byte < 63 {

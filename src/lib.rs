@@ -1,4 +1,3 @@
-use core::array::IntoIter;
 use std::io::{SeekFrom, Read, Seek};
 use anyhow::{Result, anyhow};
 use module::Module;
