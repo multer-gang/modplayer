@@ -102,8 +102,7 @@ impl MODModule {
     pub fn load(mut reader: impl io::Read + io::Seek) -> Result<MODModule> {
         let mut module = MODModule::default();
         reader.read(&mut module.song_name)?;
-        for sample_index in 0..31 {
-            let sample = &mut module.samples[sample_index];
+        for sample in &mut module.samples {
             reader.read(&mut sample.sample_name)?;
             sample.length = reader.read_u16::<BigEndian>()?.into();
             sample.length <<= 1;
@@ -131,25 +130,21 @@ impl MODModule {
                 std::array::from_fn(|_| Vec::with_capacity(channel_count));
 
             for row in &mut pattern {
-                for _channel_index in 0..channel_count {
-                    let mut data = [0u8; 4];
-                    reader.read_exact(&mut data)?;
-
-                    let column = MODColumn {
-                        period: (((data[0] & 0x0F) as u16) << 8) | data[1] as u16,
-                        instrument: (data[0] & 0xF0) | ((data[2] & 0xF0) >> 4),
-                        effect: data[2] & 0x0F,
-                        effect_value: data[3],
-                    };
-
-                    row.push(column);
-                }
+                *row = (0..channel_count)
+                    .map(|_channel_idx| {
+                        let mut data = [0; 4]; // Let type inference figure out the number type :)
+                        reader.read_exact(&mut data).map(|()| MODColumn {
+                            period: (((data[0] & 0x0F) as u16) << 8) | data[1] as u16,
+                            instrument: (data[0] & 0xF0) | ((data[2] & 0xF0) >> 4),
+                            effect: data[2] & 0x0F,
+                            effect_value: data[3],
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
             }
-
             module.patterns.push(pattern);
         }
-        for sample_index in 0..31 {
-            let sample = &mut module.samples[sample_index];
+        for sample in &mut module.samples {
             // Sample is 8 bit
             let mut data: Vec<u8> = Vec::with_capacity(sample.length as usize);
             data.resize((sample.length).try_into()?, 0);
@@ -208,25 +203,23 @@ impl MODModule {
     fn figure_out_tracker(&self) -> Option<MODTracker> {
         // this is sort of a port of amifilemagic.c by Heikki Orsila and Michael Doering
         // alongside some notes from OpenMPT
-        let channel_count = self.figure_out_channel_count().unwrap_or(0);
-        if channel_count == 0 {
-            return None;
-        }
+        let channel_count = self.figure_out_channel_count()?;
+
         let mut has_slen_sreplen_zero = 0;
         let mut no_slen_sreplen_zero = 0;
         let mut has_slen_sreplen_one = 0;
         let mut no_slen_sreplen_one = 0;
         let mut no_slen_has_volume = 0;
-        let mut finetune_used = 0;
+        let mut finetune_used = false;
 
         for sample in &self.samples {
             if sample.volume > 64 {
                 return None;
             }
-            if sample.finetune > 15 {
-                return None;
-            } else if sample.finetune != 0 {
-                finetune_used += 1;
+            match sample.finetune {
+                0 => {}
+                1..=15 => finetune_used = true,
+                _ => return None,
             }
             if sample.length != 0 && (sample.loop_start + sample.loop_length) > sample.length {
                 // repeat length is (likely) in bytes rather than words
@@ -312,7 +305,7 @@ impl MODModule {
         amiga_range_notes = lowest_note >= 12 && highest_note <= 47;
 
         for j in 0x11..0x1F {
-            if pfx[j] != 0 && finetune_used != 0 {
+            if pfx[j] != 0 && finetune_used != false {
                 if self.restart_point != 0x7F && self.restart_point != 0x78 {
                     return Some(MODTracker::Fasttracker);
                 } else {
@@ -551,7 +544,7 @@ impl ModuleInterface for MODModule {
             initial_tempo: 125,
             initial_speed: 6,
             initial_global_volume: 64,
-            mixing_volume: 128,
+            mixing_volume: 64,
             samples: self.samples(),
             patterns: self.patterns(),
             playlist: { self.order_list[..self.order_list_length as usize].to_vec() },
