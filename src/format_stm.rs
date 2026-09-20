@@ -2,10 +2,10 @@ use super::module::{
     Column, Effect, LoopType, Module, ModuleInterface, Note, Pattern, PlaybackMode, Row,
     S3MOptions, Sample, VolEffect,
 };
+use crate::stm_tools::calculate_stm_tempo;
 use anyhow::{bail, Result};
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::io::{self, SeekFrom};
-use crate::stm_tools::calculate_stm_tempo;
 
 fn translate_early_tempo(tempo: u8) -> u8 {
     ((tempo / 10) << 4) + (tempo % 10)
@@ -155,9 +155,7 @@ impl STMModule {
             // sample volume 0 is actually invalid in ST2
             if sample.volume != 0 {
                 let sampledata_offset = (sample.memseg as u64) << 4;
-                reader
-                    .seek(SeekFrom::Start(sampledata_offset as u64))
-                    ?;
+                reader.seek(SeekFrom::Start(sampledata_offset as u64))?;
 
                 // Sample is 8 bit
                 let mut data: Vec<u8> = Vec::with_capacity(sample.length as usize);
@@ -213,13 +211,11 @@ impl STMModule {
                             let packed_byte4 = reader.read_u8()?;
                             current_row.note = packed_byte;
                             current_row.instrument = packed_byte2 >> 3;
-                            current_row.vol =
-                                (packed_byte2 & 7) | ((packed_byte3 & 0xF0) >> 1);
+                            current_row.vol = (packed_byte2 & 7) | ((packed_byte3 & 0xF0) >> 1);
                             current_row.effect = packed_byte3 & 0x0F;
                             current_row.effect_value = packed_byte4;
                             if module.version_minor < 21 && current_row.effect == 1 {
-                                current_row.effect_value =
-                                    translate_early_tempo(packed_byte4);
+                                current_row.effect_value = translate_early_tempo(packed_byte4);
                             }
                         }
                     }
@@ -242,7 +238,10 @@ impl ModuleInterface for STMModule {
             .iter()
             .map(|s| Sample {
                 base_frequency: s.c4speed as u32,
-                loop_type: if s.loop_end < 0xFFFF && s.loop_end > s.loop_begin && s.loop_end <= s.length {
+                loop_type: if s.loop_end < 0xFFFF
+                    && s.loop_end > s.loop_begin
+                    && s.loop_end <= s.length
+                {
                     LoopType::Forward
                 } else {
                     LoopType::None
@@ -352,7 +351,6 @@ impl ModuleInterface for STMModule {
 
     fn module(&self) -> Module {
         Module {
-            
             mode: PlaybackMode::S3M(S3MOptions { gus: false }),
             linear_freq_slides: false,
             fast_volume_slides: false,

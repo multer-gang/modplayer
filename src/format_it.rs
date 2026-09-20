@@ -2,12 +2,12 @@ use super::module::{
     Column, Effect, LoopType, Module, ModuleInterface, Note, Pattern, PlaybackMode, Row, Sample,
     VolEffect,
 };
+use anyhow::{bail, Result};
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::{
     io::{self, Read, SeekFrom},
     slice,
 };
-use anyhow::{bail, Result};
 
 #[derive(Debug)]
 pub struct ITModule {
@@ -551,45 +551,43 @@ impl ITModule {
             sample.vibrato_type = reader.read_u8()?;
 
             // Data
-            reader
-                .seek(SeekFrom::Start(sample.sample_pointer as u64))
-                ?;
+            reader.seek(SeekFrom::Start(sample.sample_pointer as u64))?;
 
             if sample.flags & 0b1000 == 0 {
-            if sample.flags & 0b10 != 0 {
-                // Sample is 16 bit
-                let mut data: Vec<u8> = Vec::with_capacity(sample.length as usize * 2);
-                data.resize((sample.length * 2).try_into()?, 0);
-                reader.read_exact(&mut data)?;
+                if sample.flags & 0b10 != 0 {
+                    // Sample is 16 bit
+                    let mut data: Vec<u8> = Vec::with_capacity(sample.length as usize * 2);
+                    data.resize((sample.length * 2).try_into()?, 0);
+                    reader.read_exact(&mut data)?;
 
-                if sample.convert & 0b1 != 0 {
-                    // Signed?
-                    sample.audio = data
-                        .chunks(2)
-                        .map(|x| i16::from_le_bytes(x.try_into().unwrap()))
-                        .collect();
+                    if sample.convert & 0b1 != 0 {
+                        // Signed?
+                        sample.audio = data
+                            .chunks(2)
+                            .map(|x| i16::from_le_bytes(x.try_into().unwrap()))
+                            .collect();
+                    } else {
+                        sample.audio = data
+                            .chunks(2)
+                            .map(|x| u16::from_le_bytes(x.try_into().unwrap()) as i16 - 32767)
+                            .collect();
+                    }
                 } else {
-                    sample.audio = data
-                        .chunks(2)
-                        .map(|x| u16::from_le_bytes(x.try_into().unwrap()) as i16 - 32767)
-                        .collect();
-                }
-            } else {
-                // Sample is 8 bit
-                let mut data: Vec<u8> = Vec::with_capacity(sample.length as usize);
-                data.resize((sample.length).try_into()?, 0);
-                reader.read_exact(&mut data)?;
+                    // Sample is 8 bit
+                    let mut data: Vec<u8> = Vec::with_capacity(sample.length as usize);
+                    data.resize((sample.length).try_into()?, 0);
+                    reader.read_exact(&mut data)?;
 
-                if sample.convert & 0b1 != 0 {
-                    // Signed?
-                    sample.audio = data
-                        .iter()
-                        .map(|x| i8::from_ne_bytes([*x]) as i16 * 256)
-                        .collect();
-                } else {
-                    sample.audio = data.iter().map(|x| (*x as i16 - 128) * 256).collect();
+                    if sample.convert & 0b1 != 0 {
+                        // Signed?
+                        sample.audio = data
+                            .iter()
+                            .map(|x| i8::from_ne_bytes([*x]) as i16 * 256)
+                            .collect();
+                    } else {
+                        sample.audio = data.iter().map(|x| (*x as i16 - 128) * 256).collect();
+                    }
                 }
-            }
             }
             // println!("Sample {} length: {}", module.samples.len()+1, sample.audio.len());
             module.samples.push(sample)

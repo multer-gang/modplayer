@@ -72,7 +72,7 @@ pub enum Effect {
     FineSetPan(u8),     // Xxx
     Panbrello(u8),      // Yxy
     MIDIMacro(u8),      // Zxx
-                        // SmoothMIDIMacro(u8) // \xx, ModPlug hack
+    // SmoothMIDIMacro(u8) // \xx, ModPlug hack
     STMTempo(u8),
 }
 
@@ -118,12 +118,12 @@ pub enum PlaybackMode {
 
 #[derive(Debug)]
 pub struct S3MOptions {
-    pub gus: bool
+    pub gus: bool,
 }
 
 #[derive(Debug)]
 pub struct MODOptions {
-    pub amiga: bool
+    pub amiga: bool,
 }
 
 #[derive(Debug, Clone)]

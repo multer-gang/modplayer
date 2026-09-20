@@ -1,14 +1,17 @@
-use std::io::{SeekFrom, Read, Seek};
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use module::Module;
+use std::io::{Read, Seek, SeekFrom};
 
+use crate::{
+    format_it::ITModule, format_mod::MODModule, format_s3m::S3MModule, format_stm::STMModule,
+    module::ModuleInterface,
+};
 use byteorder::ReadBytesExt;
-use crate::{format_it::ITModule, format_s3m::S3MModule, format_stm::STMModule, format_mod::MODModule, module::ModuleInterface};
 
 pub mod format_it;
+pub mod format_mod;
 pub mod format_s3m;
 pub mod format_stm;
-pub mod format_mod;
 pub mod module;
 pub mod player;
 pub mod stm_tools;
@@ -35,7 +38,7 @@ pub fn load_module(mut reader: impl Read + Seek) -> Result<Module> {
 
     // Try STM
     {
-        let mut magic_stm = [0u8;8];
+        let mut magic_stm = [0u8; 8];
         let mut valid_characters = 0;
         reader.seek(SeekFrom::Start(0x14))?;
         reader.read_exact(&mut magic_stm)?;
@@ -48,7 +51,11 @@ pub fn load_module(mut reader: impl Read + Seek) -> Result<Module> {
             }
         }
         reader.seek(SeekFrom::Start(0))?;
-        if valid_characters == 8 && (end_of_id == 0x1A || end_of_id == 0x02) && song_type == 2 && major_version == 2 {
+        if valid_characters == 8
+            && (end_of_id == 0x1A || end_of_id == 0x02)
+            && song_type == 2
+            && major_version == 2
+        {
             let stm = STMModule::load(reader)?;
             return Ok(stm.module());
         }
@@ -58,13 +65,10 @@ pub fn load_module(mut reader: impl Read + Seek) -> Result<Module> {
     reader.seek(SeekFrom::Start(1080))?;
     reader.read_exact(&mut magic)?;
     reader.seek(SeekFrom::Start(0))?;
-    if &magic == b"M.K." || &magic == b"M!K!"
-    || &magic == b"M&K!" || &magic == b"N.T." {
+    if &magic == b"M.K." || &magic == b"M!K!" || &magic == b"M&K!" || &magic == b"N.T." {
         let _mod = MODModule::load(reader)?;
         return Ok(_mod.module());
     }
-    
-
 
     Err(anyhow!("Unrecognized or unsupported module format"))
 }

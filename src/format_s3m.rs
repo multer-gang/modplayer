@@ -1,15 +1,15 @@
 use super::module::{
-    Column, Effect, LoopType, Module, ModuleInterface, Note, Pattern, PlaybackMode, Row, S3MOptions, Sample, VolEffect
+    Column, Effect, LoopType, Module, ModuleInterface, Note, Pattern, PlaybackMode, Row,
+    S3MOptions, Sample, VolEffect,
 };
+use anyhow::{bail, Result};
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::io::{self, SeekFrom};
-use anyhow::{Result, bail};
 
 #[derive(Debug)]
 pub struct S3MModule {
     // FILE STRUCTURE
-
-    song_name: [u8;28],
+    song_name: [u8; 28],
     _unused: u32,
     order_amount: u16,
     sample_amount: u16,
@@ -24,14 +24,14 @@ pub struct S3MModule {
     mixing_volume: u8,
     ramping: u8,
     default_panning: u8,
-    _unused2: [u8;8],
+    _unused2: [u8; 8],
     special: u16,
-    channel_settings: [u8;32],
+    channel_settings: [u8; 32],
     orders: Vec<u8>,
 
     sample_offsets: Vec<u16>,
     pattern_offsets: Vec<u16>,
-    channel_panning: [u8;32],
+    channel_panning: [u8; 32],
 
     // PUBLIC
     pub samples: Vec<S3MSample>,
@@ -41,8 +41,8 @@ pub struct S3MModule {
 #[derive(Debug, Default)]
 pub struct S3MSample {
     sample_type: u8,
-    filename: [u8;12],
-    memseg: [u8;3],
+    filename: [u8; 12],
+    memseg: [u8; 3],
     length: u32,
     loop_begin: u32,
     loop_end: u32,
@@ -53,14 +53,14 @@ pub struct S3MSample {
     c4speed: u32,
     _unused2: u32,
     int_gp: u16,
-    sample_name: [u8;28],
-    _scrs: [u8;4],
+    sample_name: [u8; 28],
+    _scrs: [u8; 4],
 
     // Public
     pub audio: Vec<i16>,
 }
 
-type S3MPattern = [S3MRow;64];
+type S3MPattern = [S3MRow; 64];
 
 #[derive(Debug, Clone, Copy)]
 pub struct S3MColumn {
@@ -83,13 +83,13 @@ impl Default for S3MColumn {
     }
 }
 
-pub type S3MRow = [S3MColumn;32];
+pub type S3MRow = [S3MColumn; 32];
 
 impl Default for S3MModule {
     fn default() -> Self {
         // Somebody please fix this monstrosity.
         S3MModule {
-            song_name: [0;28],
+            song_name: [0; 28],
             _unused: 0,
             order_amount: 0,
             sample_amount: 0,
@@ -104,13 +104,13 @@ impl Default for S3MModule {
             mixing_volume: 0,
             ramping: 0,
             default_panning: 0,
-            _unused2: [0;8],
+            _unused2: [0; 8],
             special: 0,
-            channel_settings: [0;32],
+            channel_settings: [0; 32],
             orders: Vec::new(),
             sample_offsets: Vec::new(),
             pattern_offsets: Vec::new(),
-            channel_panning: [0;32],
+            channel_panning: [0; 32],
             samples: Vec::new(),
             patterns: Vec::new(),
         }
@@ -146,10 +146,14 @@ impl S3MModule {
         module.orders.resize(module.order_amount as usize, 255);
         reader.read(&mut module.orders)?;
 
-        module.sample_offsets.resize(module.sample_amount as usize, 0);
+        module
+            .sample_offsets
+            .resize(module.sample_amount as usize, 0);
         reader.read_u16_into::<LittleEndian>(&mut module.sample_offsets)?;
 
-        module.pattern_offsets.resize(module.pattern_amount as usize, 0);
+        module
+            .pattern_offsets
+            .resize(module.pattern_amount as usize, 0);
         reader.read_u16_into::<LittleEndian>(&mut module.pattern_offsets)?;
 
         reader.read(&mut module.channel_panning)?;
@@ -187,10 +191,9 @@ impl S3MModule {
             reader.seek(SeekFrom::Current(6))?;
             reader.read(&mut sample.sample_name)?;
 
-            let sampledata_offset: u32 =
-                ((sample.memseg[1] as u32) << 4) |
-                ((sample.memseg[2] as u32) << 12) |
-                ((sample.memseg[0] as u32) << 20);
+            let sampledata_offset: u32 = ((sample.memseg[1] as u32) << 4)
+                | ((sample.memseg[2] as u32) << 12)
+                | ((sample.memseg[0] as u32) << 20);
             reader.seek(SeekFrom::Start(sampledata_offset as u64))?;
 
             if sample.flags & 0b100 != 0 {
@@ -235,13 +238,13 @@ impl S3MModule {
         // PATTERNS START
         for offset in &module.pattern_offsets {
             if *offset == 0 {
-                module.patterns.push([S3MRow::default();64]);
+                module.patterns.push([S3MRow::default(); 64]);
                 continue;
             }
 
             // println!("Offset: {}", offset);
             reader.seek(SeekFrom::Start(((*offset as u64) << 4) + 2))?;
-            let mut pattern = [S3MRow::default();64];
+            let mut pattern = [S3MRow::default(); 64];
 
             let mut row = 0usize;
             let mut channel;
@@ -251,14 +254,17 @@ impl S3MModule {
                     row += 1;
                 }
                 channel = (packed_byte & 31) as usize;
-                if packed_byte & 32 != 0 { // note and instrument in the next 2 bytes
+                if packed_byte & 32 != 0 {
+                    // note and instrument in the next 2 bytes
                     pattern[row][channel].note = reader.read_u8()?;
                     pattern[row][channel].instrument = reader.read_u8()?;
                 }
-                if packed_byte & 64 != 0 { // volume in the next byte
+                if packed_byte & 64 != 0 {
+                    // volume in the next byte
                     pattern[row][channel].vol = reader.read_u8()?;
                 }
-                if packed_byte & 128 != 0 { // effect in the next 2 bytes
+                if packed_byte & 128 != 0 {
+                    // effect in the next 2 bytes
                     pattern[row][channel].effect = reader.read_u8()?;
                     pattern[row][channel].effect_value = reader.read_u8()?;
                 }
@@ -267,7 +273,6 @@ impl S3MModule {
                     break 'unpacking;
                 }
             }
-
         }
 
         Ok(module)
@@ -279,12 +284,12 @@ impl S3MModule {
             if sample.sample_type < 2 {
                 total |= sample.int_gp
             };
-        };
+        }
 
         match total {
             1 => false,
             0 => self.tracker_metadata > 0x1300,
-            _ => true
+            _ => true,
         }
     }
 }
@@ -295,7 +300,11 @@ impl ModuleInterface for S3MModule {
             .iter()
             .map(|s| Sample {
                 base_frequency: s.c4speed,
-                loop_type: if s.flags & 1 != 0 { LoopType::Forward } else { LoopType::None },
+                loop_type: if s.flags & 1 != 0 {
+                    LoopType::Forward
+                } else {
+                    LoopType::None
+                },
                 loop_start: s.loop_begin,
                 loop_end: s.loop_end,
 
@@ -317,7 +326,8 @@ impl ModuleInterface for S3MModule {
                 for (i, c) in r.iter().enumerate() {
                     if self.channel_settings[i] & 0x7F >= 16 // Ignore AdLib channels
                         // || self.channel_settings[i] == 255 // Also ignore unassigned channels
-                        || self.channel_settings[i] & 0x80 != 0 // Also ignore muted channels
+                        || self.channel_settings[i] & 0x80 != 0
+                    // Also ignore muted channels
                     {
                         continue;
                     }
@@ -330,8 +340,8 @@ impl ModuleInterface for S3MModule {
                                 let octave = c.note >> 4;
                                 let pitch = c.note & 0xF;
 
-                                Note::On(octave*12+pitch+12)
-                            },
+                                Note::On(octave * 12 + pitch + 12)
+                            }
                         },
                         instrument: c.instrument,
                         vol: match c.vol {
@@ -414,7 +424,11 @@ impl ModuleInterface for S3MModule {
             initial_tempo: self.initial_tempo,
             initial_speed: self.initial_speed,
             initial_global_volume: 64,
-            mixing_volume: if self.is_gus() { 48 } else { self.mixing_volume & 0x7F },
+            mixing_volume: if self.is_gus() {
+                48
+            } else {
+                self.mixing_volume & 0x7F
+            },
             samples: self.samples(),
             patterns: self.patterns(),
             playlist: self.orders.clone(),

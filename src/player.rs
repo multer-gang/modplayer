@@ -1,7 +1,8 @@
 use std::{
     array,
     f32::consts::PI,
-    io::{stdout, Write}, sync::LazyLock,
+    io::{stdout, Write},
+    sync::LazyLock,
 };
 
 use crate::module::{Effect, PlaybackMode};
@@ -10,7 +11,14 @@ use crate::stm_tools::calculate_stm_tempo;
 use super::module::{Column, LoopType, Module, Note, VolEffect};
 use sdl2::audio::AudioCallback;
 
-static SINC_LUT: LazyLock<LookupTable> = std::sync::LazyLock::new(|| LookupTable::new(-std::f32::consts::PI*32.0, std::f32::consts::PI*32.0, 2048, |x| sinc(x)));
+static SINC_LUT: LazyLock<LookupTable> = std::sync::LazyLock::new(|| {
+    LookupTable::new(
+        -std::f32::consts::PI * 32.0,
+        std::f32::consts::PI * 32.0,
+        2048,
+        |x| sinc(x),
+    )
+});
 
 struct LookupTable {
     values: Vec<f32>,
@@ -65,7 +73,7 @@ pub enum Interpolation {
     Sinc16,
     Sinc32,
     Sinc64,
-    Sinc64Fast
+    Sinc64Fast,
 }
 
 #[derive(Clone)]
@@ -80,25 +88,25 @@ struct Channel<'a> {
     position: f64,
     backwards: bool,
 
-    porta_memory: u8,     // Exx, Fxx, Gxx
-    last_note: u8,        // Gxx
-    offset_memory: u8,    // Oxx
-    volume_memory: u8,    // Dxy
+    porta_memory: u8,         // Exx, Fxx, Gxx
+    last_note: u8,            // Gxx
+    offset_memory: u8,        // Oxx
+    volume_memory: u8,        // Dxy
     global_volume_memory: u8, // Wxy
-    retrigger_memory: u8, // Qxy
-    retrigger_ticks: u8,  // Qxy
-    arpeggio_memory: u8,  // Jxy
+    retrigger_memory: u8,     // Qxy
+    retrigger_ticks: u8,      // Qxy
+    arpeggio_memory: u8,      // Jxy
     arpeggio_selector: u8,
     arpeggio_state: bool,
     s3m_effect_memory: u8, // S3M only
 
     // Vibrato state
-    vibrato_speed: u8,    // upper 4 bits of Hxy / Uxy
-    vibrato_depth: u8,    // lower 4 bits of Hxy / Uxy
-    vibrato_waveform: u8, // 0=sine, 1=ramp down, 2=square (others reserved)
-    vibrato_phase: u16,   // 0..63
-    vibrato_memory: u8,   // IT/ITSample memory for Hxy/Uxy
-    vibrato_on: bool,     // apply vibrato this tick
+    vibrato_speed: u8,     // upper 4 bits of Hxy / Uxy
+    vibrato_depth: u8,     // lower 4 bits of Hxy / Uxy
+    vibrato_waveform: u8,  // 0=sine, 1=ramp down, 2=square (others reserved)
+    vibrato_phase: u16,    // 0..63
+    vibrato_memory: u8,    // IT/ITSample memory for Hxy/Uxy
+    vibrato_on: bool,      // apply vibrato this tick
     vibrato_is_fine: bool, // fine vibrato scaling
 
     volume: f32,
@@ -177,9 +185,15 @@ impl Channel<'_> {
     fn vibrato_lfo(&self) -> f32 {
         let phase = (self.vibrato_phase & 63) as f32 / 64.0;
         match self.vibrato_waveform & 0x03 {
-            1 => 1.0 - 2.0 * phase,            // ramp down from +1 to -1
-            2 => if phase < 0.5 { 1.0 } else { -1.0 }, // square
-            _ => (phase * 2.0 * PI).sin(),     // sine
+            1 => 1.0 - 2.0 * phase, // ramp down from +1 to -1
+            2 => {
+                if phase < 0.5 {
+                    1.0
+                } else {
+                    -1.0
+                }
+            } // square
+            _ => (phase * 2.0 * PI).sin(), // sine
         }
     }
 
@@ -191,17 +205,27 @@ impl Channel<'_> {
         match self.module.mode {
             PlaybackMode::IT | PlaybackMode::ITSample => {
                 let base = (self.vibrato_depth as f32).min(15.0);
-                let amplitude_cents = if self.vibrato_is_fine { base * 6.0 } else { base * 12.0 };
+                let amplitude_cents = if self.vibrato_is_fine {
+                    base * 6.0
+                } else {
+                    base * 12.0
+                };
                 let ratio = 2f32.powf(self.vibrato_lfo() * amplitude_cents / 1200.0);
                 self.freq * ratio
             }
             _ => {
                 let base = (self.vibrato_depth as f32).min(15.0);
-                let amplitude_period = if self.vibrato_is_fine { base * 1.5 } else { base * 3.0 };
+                let amplitude_period = if self.vibrato_is_fine {
+                    base * 1.5
+                } else {
+                    base * 3.0
+                };
                 let p = period(self.freq);
                 let dp = amplitude_period * self.vibrato_lfo();
                 let mut new_p = p + dp;
-                if new_p < 1.0 { new_p = 1.0; }
+                if new_p < 1.0 {
+                    new_p = 1.0;
+                }
                 // Clamp to u16 range just in case
                 let new_p_u16 = new_p.max(1.0).min(u16::MAX as f32) as u16;
                 freq_from_period(new_p_u16)
@@ -211,19 +235,19 @@ impl Channel<'_> {
     fn porta_up(&mut self, linear: bool, ticks_passed: u8, mut value: u8) {
         if value != 0 {
             match self.module.mode {
-                super::module::PlaybackMode::S3M(_) =>
-                    self.s3m_effect_memory = value,
-                super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample =>
-                    self.porta_memory = value,
+                super::module::PlaybackMode::S3M(_) => self.s3m_effect_memory = value,
+                super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample => {
+                    self.porta_memory = value
+                }
                 super::module::PlaybackMode::MOD(_) => {}
                 _ => todo!(),
             }
         } else {
             match self.module.mode {
-                super::module::PlaybackMode::S3M(_) =>
-                    value = self.s3m_effect_memory,
-                super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample =>
-                    value = self.porta_memory,
+                super::module::PlaybackMode::S3M(_) => value = self.s3m_effect_memory,
+                super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample => {
+                    value = self.porta_memory
+                }
                 super::module::PlaybackMode::MOD(_) => {}
                 _ => todo!(),
             }
@@ -232,17 +256,20 @@ impl Channel<'_> {
         if linear {
             match value & 0xF0 {
                 // Detect fine-iness
-                0xE0 => { // Extra fine
+                0xE0 => {
+                    // Extra fine
                     if ticks_passed == 0 {
                         self.freq = self.freq * 2f32.powf((value & 0xF) as f32 / 768.0)
                     }
                 }
-                0xF0 => { // Fine
+                0xF0 => {
+                    // Fine
                     if ticks_passed == 0 {
                         self.freq = self.freq * 2f32.powf((value & 0xF) as f32 / 192.0)
                     }
                 }
-                _ => { // Regular
+                _ => {
+                    // Regular
                     if ticks_passed > 0 {
                         self.freq = self.freq * 2f32.powf(value as f32 / 192.0)
                     }
@@ -253,19 +280,25 @@ impl Channel<'_> {
             match value & 0xF0 {
                 0xE0 => {
                     if ticks_passed == 0 {
-                        self.freq = freq_from_period((period(self.freq) - ((value & 0xF) as f32)).round() as u16)
+                        self.freq = freq_from_period(
+                            (period(self.freq) - ((value & 0xF) as f32)).round() as u16,
+                        )
                     }
                 }
                 0xF0 => {
                     if ticks_passed == 0 {
-                        self.freq = freq_from_period((period(self.freq) - ((value & 0xF) as f32 * 4.0)).round() as u16)
+                        self.freq = freq_from_period(
+                            (period(self.freq) - ((value & 0xF) as f32 * 4.0)).round() as u16,
+                        )
                     }
                 }
                 _ => {
                     if ticks_passed > 0 {
-                        self.freq = freq_from_period((period(self.freq) - (value as f32 * 4.0)).round() as u16)
+                        self.freq = freq_from_period(
+                            (period(self.freq) - (value as f32 * 4.0)).round() as u16,
+                        )
                     }
-                },
+                }
             }
         }
     }
@@ -273,18 +306,18 @@ impl Channel<'_> {
     fn porta_down(&mut self, linear: bool, ticks_passed: u8, mut value: u8) {
         if value != 0 {
             match self.module.mode {
-                super::module::PlaybackMode::S3M(_) =>
-                    self.s3m_effect_memory = value,
-                super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample | super::module::PlaybackMode::MOD(_) =>
-                    self.porta_memory = value,
+                super::module::PlaybackMode::S3M(_) => self.s3m_effect_memory = value,
+                super::module::PlaybackMode::IT
+                | super::module::PlaybackMode::ITSample
+                | super::module::PlaybackMode::MOD(_) => self.porta_memory = value,
                 _ => todo!(),
             }
         } else {
             match self.module.mode {
-                super::module::PlaybackMode::S3M(_) =>
-                    value = self.s3m_effect_memory,
-                super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample | super::module::PlaybackMode::MOD(_) =>
-                    value = self.porta_memory,
+                super::module::PlaybackMode::S3M(_) => value = self.s3m_effect_memory,
+                super::module::PlaybackMode::IT
+                | super::module::PlaybackMode::ITSample
+                | super::module::PlaybackMode::MOD(_) => value = self.porta_memory,
                 _ => todo!(),
             }
         }
@@ -292,17 +325,20 @@ impl Channel<'_> {
         if linear {
             match value & 0xF0 {
                 // Detect fine-iness
-                0xE0 => { // Extra fine
+                0xE0 => {
+                    // Extra fine
                     if ticks_passed == 0 {
                         self.freq = self.freq / 2f32.powf((value & 0xF) as f32 / 768.0)
                     }
                 }
-                0xF0 => { // Fine
+                0xF0 => {
+                    // Fine
                     if ticks_passed == 0 {
                         self.freq = self.freq / 2f32.powf((value & 0xF) as f32 / 192.0)
                     }
                 }
-                _ => { // Regular
+                _ => {
+                    // Regular
                     if ticks_passed > 0 {
                         self.freq = self.freq / 2f32.powf(value as f32 / 192.0)
                     }
@@ -313,19 +349,25 @@ impl Channel<'_> {
             match value & 0xF0 {
                 0xE0 => {
                     if ticks_passed == 0 {
-                        self.freq = freq_from_period((period(self.freq) + ((value & 0xF) as f32)).round() as u16)
+                        self.freq = freq_from_period(
+                            (period(self.freq) + ((value & 0xF) as f32)).round() as u16,
+                        )
                     }
                 }
                 0xF0 => {
                     if ticks_passed == 0 {
-                        self.freq = freq_from_period((period(self.freq) + ((value & 0xF) as f32 * 4.0)).round() as u16)
+                        self.freq = freq_from_period(
+                            (period(self.freq) + ((value & 0xF) as f32 * 4.0)).round() as u16,
+                        )
                     }
                 }
                 _ => {
                     if ticks_passed > 0 {
-                        self.freq = freq_from_period((period(self.freq) + (value as f32 * 4.0)).round() as u16)
+                        self.freq = freq_from_period(
+                            (period(self.freq) + (value as f32 * 4.0)).round() as u16,
+                        )
                     }
-                },
+                }
             }
         }
     }
@@ -360,12 +402,14 @@ impl Channel<'_> {
         } else {
             // Amiga slides
             if self.freq < desired_freq {
-                self.freq = freq_from_period((period(self.freq) - (value as f32 * 4.0)).round() as u16);
+                self.freq =
+                    freq_from_period((period(self.freq) - (value as f32 * 4.0)).round() as u16);
                 if self.freq > desired_freq {
                     self.freq = desired_freq
                 }
             } else if self.freq > desired_freq {
-                self.freq = freq_from_period((period(self.freq) + (value as f32 * 4.0)).round() as u16);
+                self.freq =
+                    freq_from_period((period(self.freq) + (value as f32 * 4.0)).round() as u16);
                 if self.freq < desired_freq {
                     self.freq = desired_freq
                 }
@@ -376,20 +420,20 @@ impl Channel<'_> {
     fn vol_slide(&mut self, mut value: u8, ticks_passed: u8) {
         if value != 0 {
             match self.module.mode {
-                super::module::PlaybackMode::S3M(_) =>
-                    self.s3m_effect_memory = value,
-                super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample =>
-                    self.volume_memory = value,
-                super::module::PlaybackMode::MOD(_) => {},
+                super::module::PlaybackMode::S3M(_) => self.s3m_effect_memory = value,
+                super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample => {
+                    self.volume_memory = value
+                }
+                super::module::PlaybackMode::MOD(_) => {}
                 _ => todo!(),
             }
         } else {
             match self.module.mode {
-                super::module::PlaybackMode::S3M(_) =>
-                    value = self.s3m_effect_memory,
-                super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample =>
-                    value = self.volume_memory,
-                super::module::PlaybackMode::MOD(_) => {},
+                super::module::PlaybackMode::S3M(_) => value = self.s3m_effect_memory,
+                super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample => {
+                    value = self.volume_memory
+                }
+                super::module::PlaybackMode::MOD(_) => {}
                 _ => todo!(),
             }
         }
@@ -428,18 +472,18 @@ impl Channel<'_> {
     fn retrigger(&mut self, mut value: u8) {
         if value != 0 {
             match self.module.mode {
-                super::module::PlaybackMode::S3M(_) =>
-                    self.s3m_effect_memory = value,
-                super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample =>
-                    self.retrigger_memory = value,
+                super::module::PlaybackMode::S3M(_) => self.s3m_effect_memory = value,
+                super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample => {
+                    self.retrigger_memory = value
+                }
                 _ => todo!(),
             }
         } else {
             match self.module.mode {
-                super::module::PlaybackMode::S3M(_) =>
-                    value = self.s3m_effect_memory,
-                super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample =>
-                    value = self.retrigger_memory,
+                super::module::PlaybackMode::S3M(_) => value = self.s3m_effect_memory,
+                super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample => {
+                    value = self.retrigger_memory
+                }
                 _ => todo!(),
             }
         }
@@ -491,12 +535,16 @@ impl Channel<'_> {
 
         match self.arpeggio_selector {
             0 => self.freq = self.base_freq,
-            1 => self.freq = 2f32.powf((self.current_note as f32 + ((value & 0xF0) >> 4) as f32 - 60.0) / 12.0)
-                * self.module.samples[self.current_sample_index as usize]
-                    .base_frequency as f32,
-            2 => self.freq = 2f32.powf((self.current_note as f32 + (value & 0x0F) as f32 - 60.0) / 12.0)
-                * self.module.samples[self.current_sample_index as usize]
-                    .base_frequency as f32,
+            1 => {
+                self.freq = 2f32
+                    .powf((self.current_note as f32 + ((value & 0xF0) >> 4) as f32 - 60.0) / 12.0)
+                    * self.module.samples[self.current_sample_index as usize].base_frequency as f32
+            }
+            2 => {
+                self.freq = 2f32
+                    .powf((self.current_note as f32 + (value & 0x0F) as f32 - 60.0) / 12.0)
+                    * self.module.samples[self.current_sample_index as usize].base_frequency as f32
+            }
             _ => {}
         }
 
@@ -505,29 +553,35 @@ impl Channel<'_> {
     }
 
     fn process(&mut self, samplerate: u32, interpolation: Interpolation) -> i32 {
-        if self.current_sample_index as usize >= self.module.samples.len() { return 0 }
+        if self.current_sample_index as usize >= self.module.samples.len() {
+            return 0;
+        }
 
         let sample = &self.module.samples[self.current_sample_index as usize];
         if !self.playing || sample.audio.len() == 0 {
             return 0;
         };
 
-            let eff_freq = self.effective_freq();
-            if self.backwards {
-                if self.position as u32 <= sample.loop_start {
-                    self.backwards = false;
-                    self.position = sample.loop_start as f64
-                } else {
-                    self.position -= eff_freq as f64 / samplerate as f64;
-                }
+        let eff_freq = self.effective_freq();
+        if self.backwards {
+            if self.position as u32 <= sample.loop_start {
+                self.backwards = false;
+                self.position = sample.loop_start as f64
             } else {
-                self.position += eff_freq as f64 / samplerate as f64;
+                self.position -= eff_freq as f64 / samplerate as f64;
             }
+        } else {
+            self.position += eff_freq as f64 / samplerate as f64;
+        }
 
         if sample.loop_end > 0 {
             if self.position as u32 > sample.loop_end - 1 {
                 match sample.loop_type {
-                    LoopType::Forward => self.position = sample.loop_start as f64 + ((self.position - sample.loop_end as f64) % ((sample.loop_end - sample.loop_start) as f64)),
+                    LoopType::Forward => {
+                        self.position = sample.loop_start as f64
+                            + ((self.position - sample.loop_end as f64)
+                                % ((sample.loop_end - sample.loop_start) as f64))
+                    }
                     LoopType::PingPong => {
                         self.backwards = true;
                         let eff_freq = self.effective_freq();
@@ -667,8 +721,10 @@ impl Player<'_> {
         for c in self.channels.iter_mut() {
             if c.playing {
                 let tmp = c.process(self.samplerate, self.interpolation) as i64
-                    * self.module.mixing_volume as i64 / 128
-                    * self.global_volume as i64 / max_global_volume(&self.module.mode) as i64;
+                    * self.module.mixing_volume as i64
+                    / 128
+                    * self.global_volume as i64
+                    / max_global_volume(&self.module.mode) as i64;
 
                 out = out.saturating_add(tmp as i32);
             }
@@ -744,19 +800,23 @@ impl Player<'_> {
                     channel.porta_down(self.module.linear_freq_slides, self.ticks_passed, value);
                 }
                 Effect::TonePorta(value) => {
-                    if self.ticks_passed <= 0 {return};
+                    if self.ticks_passed <= 0 {
+                        return;
+                    };
                     channel.tone_portamento(col.note, self.module.linear_freq_slides, value)
                 }
                 Effect::VolSlideTonePorta(value) => {
                     channel.vol_slide(value, self.ticks_passed);
-                    if self.ticks_passed <= 0 {return};
+                    if self.ticks_passed <= 0 {
+                        return;
+                    };
                     channel.tone_portamento(col.note, self.module.linear_freq_slides, 0);
                 }
                 Effect::VolSlideVibrato(value) => {
                     channel.vol_slide(value, self.ticks_passed);
                     // Use last vibrato params but activate vibrato this row.
                     want_vibrato = true;
-                },
+                }
                 Effect::VolSlide(value) => channel.vol_slide(value, self.ticks_passed),
                 Effect::Retrig(value) => channel.retrigger(value),
                 Effect::Arpeggio(value) => channel.arpeggio(value),
@@ -764,45 +824,69 @@ impl Player<'_> {
                     let mut mem = value;
                     match self.module.mode {
                         PlaybackMode::S3M(_) => {
-                            if value != 0 { channel.s3m_effect_memory = value; }
-                            if mem == 0 { mem = channel.s3m_effect_memory; }
+                            if value != 0 {
+                                channel.s3m_effect_memory = value;
+                            }
+                            if mem == 0 {
+                                mem = channel.s3m_effect_memory;
+                            }
                         }
                         PlaybackMode::IT | PlaybackMode::ITSample => {
-                            if value != 0 { channel.vibrato_memory = value; }
-                            if mem == 0 { mem = channel.vibrato_memory; }
+                            if value != 0 {
+                                channel.vibrato_memory = value;
+                            }
+                            if mem == 0 {
+                                mem = channel.vibrato_memory;
+                            }
                         }
                         _ => {}
                     }
                     let spd = (mem >> 4) & 0x0F;
                     let dep = mem & 0x0F;
-                    if spd != 0 { channel.vibrato_speed = spd; }
-                    if dep != 0 { channel.vibrato_depth = dep; }
+                    if spd != 0 {
+                        channel.vibrato_speed = spd;
+                    }
+                    if dep != 0 {
+                        channel.vibrato_depth = dep;
+                    }
                     channel.vibrato_is_fine = true;
                     want_vibrato = true;
-                },
+                }
                 Effect::SetVibratoWaveform(wave) => {
                     channel.vibrato_waveform = wave & 0x03;
-                },
+                }
                 Effect::Vibrato(value) => {
                     let mut mem = value;
                     match self.module.mode {
                         PlaybackMode::S3M(_) => {
-                            if value != 0 { channel.s3m_effect_memory = value; }
-                            if mem == 0 { mem = channel.s3m_effect_memory; }
+                            if value != 0 {
+                                channel.s3m_effect_memory = value;
+                            }
+                            if mem == 0 {
+                                mem = channel.s3m_effect_memory;
+                            }
                         }
                         PlaybackMode::IT | PlaybackMode::ITSample => {
-                            if value != 0 { channel.vibrato_memory = value; }
-                            if mem == 0 { mem = channel.vibrato_memory; }
+                            if value != 0 {
+                                channel.vibrato_memory = value;
+                            }
+                            if mem == 0 {
+                                mem = channel.vibrato_memory;
+                            }
                         }
                         _ => {}
                     }
                     let spd = (mem >> 4) & 0x0F;
                     let dep = mem & 0x0F;
-                    if spd != 0 { channel.vibrato_speed = spd; }
-                    if dep != 0 { channel.vibrato_depth = dep; }
+                    if spd != 0 {
+                        channel.vibrato_speed = spd;
+                    }
+                    if dep != 0 {
+                        channel.vibrato_depth = dep;
+                    }
                     channel.vibrato_is_fine = false;
                     want_vibrato = true;
-                },
+                }
                 Effect::GlobalVolSlide(mut value) => {
                     if value != 0 {
                         channel.global_volume_memory = value
@@ -812,9 +896,10 @@ impl Player<'_> {
 
                     // Defer applying to after the loop to avoid borrow conflicts
                     pending_global_vol_slide = Some(value);
-                },
+                }
                 Effect::None(value) => {
-                    if value != 0 && matches!(self.module.mode, super::module::PlaybackMode::S3M(_)) {
+                    if value != 0 && matches!(self.module.mode, super::module::PlaybackMode::S3M(_))
+                    {
                         channel.s3m_effect_memory = value;
                     }
                 }
@@ -888,8 +973,8 @@ impl Player<'_> {
                 Effect::PatBreak(row) => {
                     pat_break_enabled = true;
                     pat_break_to = match self.module.mode {
-                        super::module::PlaybackMode::MOD(_) | super::module::PlaybackMode::S3M(_) =>
-                            (row & 0xF) + ((row >> 4) * 10),
+                        super::module::PlaybackMode::MOD(_)
+                        | super::module::PlaybackMode::S3M(_) => (row & 0xF) + ((row >> 4) * 10),
                         _ => row,
                     }
                 }
@@ -991,17 +1076,21 @@ impl Player<'_> {
                 Effect::SetSpeed(speed) => self.current_speed = speed,
                 Effect::SetTempo(tempo) => self.current_tempo = tempo,
                 Effect::Arpeggio(_) => channel.arpeggio_selector = 0,
-                Effect::SetGlobalVol(vol) => if vol <= max_global_volume(&self.module.mode) {self.global_volume = vol},
+                Effect::SetGlobalVol(vol) => {
+                    if vol <= max_global_volume(&self.module.mode) {
+                        self.global_volume = vol
+                    }
+                }
                 Effect::STMTempo(tempo) => {
                     self.current_speed = tempo >> 4;
                     self.current_tempo = calculate_stm_tempo(tempo);
-                },
+                }
                 _ => {}
             }
 
             if channel.arpeggio_state {
-                if !matches!(self.module.mode, PlaybackMode::S3M(_)) ||
-                    !matches!(col.effect, Effect::PortaUp(_) | Effect::PortaDown(_))
+                if !matches!(self.module.mode, PlaybackMode::S3M(_))
+                    || !matches!(col.effect, Effect::PortaUp(_) | Effect::PortaDown(_))
                 {
                     channel.freq = channel.base_freq;
                 }
@@ -1011,7 +1100,9 @@ impl Player<'_> {
             if col.instrument != 0 {
                 channel.current_sample_index = col.instrument - 1;
 
-                if matches!(col.vol, VolEffect::None) && (channel.current_sample_index as usize) < self.module.samples.len() {
+                if matches!(col.vol, VolEffect::None)
+                    && (channel.current_sample_index as usize) < self.module.samples.len()
+                {
                     channel.volume = self.module.samples[channel.current_sample_index as usize]
                         .default_volume as f32
                 }
@@ -1096,23 +1187,30 @@ fn format_note(note: Note) -> String {
         9 => "A-",
         10 => "A#",
         11 => "B-",
-        _ => unreachable!()
+        _ => unreachable!(),
     });
 
-    out.push_str(format!("{}", real_note/12).as_str());
+    out.push_str(format!("{}", real_note / 12).as_str());
 
     out
 }
 
 fn format_col(col: &Column) -> String {
-    let instrument = if col.instrument == 0 { "\x1b[37m..".to_string() } else { format!("\x1b[96m{:0>2}", col.instrument) };
+    let instrument = if col.instrument == 0 {
+        "\x1b[37m..".to_string()
+    } else {
+        format!("\x1b[96m{:0>2}", col.instrument)
+    };
     let volume = format_vol(&col.vol);
     // let fx = if col.effect == 0 { ".".to_string() } else { format!("{}", (0x40+col.effect) as char) };
     // let fxvalue = if col.effect_value == 0 { if col.effect != 0 { "00".to_string() } else { "..".to_string() } } else { format!("{:0>2X}", col.effect_value) };
     let fx = format_effect(&col.effect);
 
     // format!("{} {instrument} {volume} {fx}{fxvalue}", format_note(col.note))
-    format!("\x1b[0m\x1b[97m{} {instrument} {volume} {fx}", format_note(col.note))
+    format!(
+        "\x1b[0m\x1b[97m{} {instrument} {volume} {fx}",
+        format_note(col.note)
+    )
 }
 
 fn format_vol(vol: &VolEffect) -> String {
@@ -1133,68 +1231,80 @@ fn format_vol(vol: &VolEffect) -> String {
 
 fn format_effect(effect: &Effect) -> String {
     match effect {
-        Effect::None(value) => if *value != 0u8 { format!("\x1b[37m.{:0>2X}", value) } else { "\x1b[37m...".to_owned() },
+        Effect::None(value) => {
+            if *value != 0u8 {
+                format!("\x1b[37m.{:0>2X}", value)
+            } else {
+                "\x1b[37m...".to_owned()
+            }
+        }
 
-        Effect::SetSpeed(value) => format!("\x1b[91mA{:0>2X}", value),           // Axx
-        Effect::PosJump(value) => format!("\x1b[91mB{:0>2X}", value),            // Bxx
-        Effect::PatBreak(value) => format!("\x1b[91mC{:0>2X}", value),           // Cxx
-        Effect::VolSlide(value) => format!("\x1b[92mD{:0>2X}", value),           // Dxy
-        Effect::PortaDown(value) => format!("\x1b[93mE{:0>2X}", value),          // Exx
-        Effect::PortaUp(value) => format!("\x1b[93mF{:0>2X}", value),            // Fxx
-        Effect::TonePorta(value) => format!("\x1b[93mG{:0>2X}", value),          // Gxx
-        Effect::Vibrato(value) => format!("\x1b[93mH{:0>2X}", value),            // Hxy
-        Effect::Tremor(value) => format!("\x1b[97mI{:0>2X}", value),             // Ixy
-        Effect::Arpeggio(value) => format!("\x1b[97mJ{:0>2X}", value),           // Jxy
-        Effect::VolSlideVibrato(value) => format!("\x1b[92mK{:0>2X}", value),    // Kxy
-        Effect::VolSlideTonePorta(value) => format!("\x1b[92mL{:0>2X}", value),  // Lxy
-        Effect::SetChanVol(value) => format!("\x1b[92mM{:0>2X}", value),         // Mxx
-        Effect::ChanVolSlide(value) => format!("\x1b[92mN{:0>2X}", value),       // Nxy
-        Effect::SampleOffset(value) => format!("\x1b[97mO{:0>2X}", value),       // Oxx
-        Effect::PanSlide(value) => format!("\x1b[96mP{:0>2X}", value),           // Pxy
-        Effect::Retrig(value) => format!("\x1b[97mQ{:0>2X}", value),             // Qxy
-        Effect::Tremolo(value) => format!("\x1b[92mR{:0>2X}", value),            // Rxy
+        Effect::SetSpeed(value) => format!("\x1b[91mA{:0>2X}", value), // Axx
+        Effect::PosJump(value) => format!("\x1b[91mB{:0>2X}", value),  // Bxx
+        Effect::PatBreak(value) => format!("\x1b[91mC{:0>2X}", value), // Cxx
+        Effect::VolSlide(value) => format!("\x1b[92mD{:0>2X}", value), // Dxy
+        Effect::PortaDown(value) => format!("\x1b[93mE{:0>2X}", value), // Exx
+        Effect::PortaUp(value) => format!("\x1b[93mF{:0>2X}", value),  // Fxx
+        Effect::TonePorta(value) => format!("\x1b[93mG{:0>2X}", value), // Gxx
+        Effect::Vibrato(value) => format!("\x1b[93mH{:0>2X}", value),  // Hxy
+        Effect::Tremor(value) => format!("\x1b[97mI{:0>2X}", value),   // Ixy
+        Effect::Arpeggio(value) => format!("\x1b[97mJ{:0>2X}", value), // Jxy
+        Effect::VolSlideVibrato(value) => format!("\x1b[92mK{:0>2X}", value), // Kxy
+        Effect::VolSlideTonePorta(value) => format!("\x1b[92mL{:0>2X}", value), // Lxy
+        Effect::SetChanVol(value) => format!("\x1b[92mM{:0>2X}", value), // Mxx
+        Effect::ChanVolSlide(value) => format!("\x1b[92mN{:0>2X}", value), // Nxy
+        Effect::SampleOffset(value) => format!("\x1b[97mO{:0>2X}", value), // Oxx
+        Effect::PanSlide(value) => format!("\x1b[96mP{:0>2X}", value), // Pxy
+        Effect::Retrig(value) => format!("\x1b[97mQ{:0>2X}", value),   // Qxy
+        Effect::Tremolo(value) => format!("\x1b[92mR{:0>2X}", value),  // Rxy
 
-        Effect::GlissandoControl(bool) => if *bool { "\x1b[97mS11".to_owned() } else { "\x1b[97mS10".to_owned() },    // S1x
-        Effect::SetFinetune(value) => format!("\x1b[97mS2{:0>1X}", value),           // S2x
-        Effect::SetVibratoWaveform(value) => format!("\x1b[97mS3{:0>1X}", value),    // S3x
-        Effect::SetTremoloWaveform(value) => format!("\x1b[97mS4{:0>1X}", value),    // S4x
-        Effect::SetPanbrelloWaveform(value) => format!("\x1b[97mS5{:0>1X}", value),  // S5x
-        Effect::FinePatternDelay(value) => format!("\x1b[97mS6{:0>1X}", value),      // S6x
+        Effect::GlissandoControl(bool) => {
+            if *bool {
+                "\x1b[97mS11".to_owned()
+            } else {
+                "\x1b[97mS10".to_owned()
+            }
+        } // S1x
+        Effect::SetFinetune(value) => format!("\x1b[97mS2{:0>1X}", value), // S2x
+        Effect::SetVibratoWaveform(value) => format!("\x1b[97mS3{:0>1X}", value), // S3x
+        Effect::SetTremoloWaveform(value) => format!("\x1b[97mS4{:0>1X}", value), // S4x
+        Effect::SetPanbrelloWaveform(value) => format!("\x1b[97mS5{:0>1X}", value), // S5x
+        Effect::FinePatternDelay(value) => format!("\x1b[97mS6{:0>1X}", value), // S6x
 
-        Effect::PastNoteCut => "\x1b[97mS70".to_owned(),      // S70
-        Effect::PastNoteOff => "\x1b[97mS71".to_owned(),      // S71
-        Effect::PastNoteFade => "\x1b[97mS72".to_owned(),     // S72
-        Effect::NNANoteCut => "\x1b[97mS73".to_owned(),       // S73
-        Effect::NNANoteContinue => "\x1b[97mS74".to_owned(),  // S74
-        Effect::NNANoteOff => "\x1b[97mS75".to_owned(),       // S75
-        Effect::NNANoteFade => "\x1b[97mS76".to_owned(),      // S76
-        Effect::VolEnvOff => "\x1b[97mS77".to_owned(),        // S77
-        Effect::VolEnvOn => "\x1b[97mS78".to_owned(),         // S78
-        Effect::PanEnvOff => "\x1b[97mS79".to_owned(),        // S79
-        Effect::PanEnvOn => "\x1b[97mS7A".to_owned(),         // S7A
-        Effect::PitchEnvOff => "\x1b[97mS7B".to_owned(),      // S7B
-        Effect::PitchEnvOn => "\x1b[97mS7C".to_owned(),       // S7C
+        Effect::PastNoteCut => "\x1b[97mS70".to_owned(), // S70
+        Effect::PastNoteOff => "\x1b[97mS71".to_owned(), // S71
+        Effect::PastNoteFade => "\x1b[97mS72".to_owned(), // S72
+        Effect::NNANoteCut => "\x1b[97mS73".to_owned(),  // S73
+        Effect::NNANoteContinue => "\x1b[97mS74".to_owned(), // S74
+        Effect::NNANoteOff => "\x1b[97mS75".to_owned(),  // S75
+        Effect::NNANoteFade => "\x1b[97mS76".to_owned(), // S76
+        Effect::VolEnvOff => "\x1b[97mS77".to_owned(),   // S77
+        Effect::VolEnvOn => "\x1b[97mS78".to_owned(),    // S78
+        Effect::PanEnvOff => "\x1b[97mS79".to_owned(),   // S79
+        Effect::PanEnvOn => "\x1b[97mS7A".to_owned(),    // S7A
+        Effect::PitchEnvOff => "\x1b[97mS7B".to_owned(), // S7B
+        Effect::PitchEnvOn => "\x1b[97mS7C".to_owned(),  // S7C
 
-        Effect::SetPan(value) => format!("\x1b[97mS8{:0>1X}", value),          // S8x
-        Effect::SoundControl(value) => format!("\x1b[97mS9{:0>1X}", value),    // S9x
-        Effect::HighOffset(value) => format!("\x1b[97mSA{:0>1X}", value),      // SAx
-        Effect::PatLoopStart => "SB0".to_owned(),        // SB0
-        Effect::PatLoop(value) => format!("\x1b[97mSB{:0>1X}", value),         // SBx
-        Effect::NoteCut(value) => format!("\x1b[97mSC{:0>1X}", value),         // SCx
-        Effect::NoteDelay(value) => format!("\x1b[97mSD{:0>1X}", value),       // SDx
-        Effect::PatDelay(value) => format!("\x1b[97mSE{:0>1X}", value),        // SEx
-        Effect::SetActiveMacro(value) => format!("\x1b[97mSF{:0>1X}", value),  // SFx
+        Effect::SetPan(value) => format!("\x1b[97mS8{:0>1X}", value), // S8x
+        Effect::SoundControl(value) => format!("\x1b[97mS9{:0>1X}", value), // S9x
+        Effect::HighOffset(value) => format!("\x1b[97mSA{:0>1X}", value), // SAx
+        Effect::PatLoopStart => "SB0".to_owned(),                     // SB0
+        Effect::PatLoop(value) => format!("\x1b[97mSB{:0>1X}", value), // SBx
+        Effect::NoteCut(value) => format!("\x1b[97mSC{:0>1X}", value), // SCx
+        Effect::NoteDelay(value) => format!("\x1b[97mSD{:0>1X}", value), // SDx
+        Effect::PatDelay(value) => format!("\x1b[97mSE{:0>1X}", value), // SEx
+        Effect::SetActiveMacro(value) => format!("\x1b[97mSF{:0>1X}", value), // SFx
 
-        Effect::DecTempo(value) => format!("\x1b[91mT{:0>2X}", value),        // T0x
-        Effect::IncTempo(value) => format!("\x1b[91mT{:0>2X}", value),        // T1x
-        Effect::SetTempo(value) => format!("\x1b[91mT{:0>2X}", value),        // Txx
-        Effect::FineVibrato(value) => format!("\x1b[93mU{:0>2X}", value),     // Uxy
-        Effect::SetGlobalVol(value) => format!("\x1b[91mV{:0>2X}", value),    // Vxx
-        Effect::GlobalVolSlide(value) => format!("\x1b[91mW{:0>2X}", value),  // Wxy
-        Effect::FineSetPan(value) => format!("\x1b[96mX{:0>2X}", value),      // Xxx
-        Effect::Panbrello(value) => format!("\x1b[96mY{:0>2X}", value),       // Yxy
-        Effect::MIDIMacro(value) => format!("\x1b[97mZ{:0>2X}", value),       // Zxx
+        Effect::DecTempo(value) => format!("\x1b[91mT{:0>2X}", value), // T0x
+        Effect::IncTempo(value) => format!("\x1b[91mT{:0>2X}", value), // T1x
+        Effect::SetTempo(value) => format!("\x1b[91mT{:0>2X}", value), // Txx
+        Effect::FineVibrato(value) => format!("\x1b[93mU{:0>2X}", value), // Uxy
+        Effect::SetGlobalVol(value) => format!("\x1b[91mV{:0>2X}", value), // Vxx
+        Effect::GlobalVolSlide(value) => format!("\x1b[91mW{:0>2X}", value), // Wxy
+        Effect::FineSetPan(value) => format!("\x1b[96mX{:0>2X}", value), // Xxx
+        Effect::Panbrello(value) => format!("\x1b[96mY{:0>2X}", value), // Yxy
+        Effect::MIDIMacro(value) => format!("\x1b[97mZ{:0>2X}", value), // Zxx
 
-        Effect::STMTempo(value) => format!("\x1b[91mA{:0>2X}", value),        // ST2: Axx
+        Effect::STMTempo(value) => format!("\x1b[91mA{:0>2X}", value), // ST2: Axx
     }
 }
