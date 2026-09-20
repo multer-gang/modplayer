@@ -3,11 +3,12 @@ use anyhow::{Result, anyhow};
 use module::Module;
 
 use byteorder::ReadBytesExt;
-use crate::{format_it::ITModule, format_s3m::S3MModule, format_stm::STMModule, module::ModuleInterface};
+use crate::{format_it::ITModule, format_s3m::S3MModule, format_stm::STMModule, format_mod::MODModule, module::ModuleInterface};
 
 pub mod format_it;
 pub mod format_s3m;
 pub mod format_stm;
+pub mod format_mod;
 pub mod module;
 pub mod player;
 pub mod stm_tools;
@@ -51,8 +52,19 @@ pub fn load_module(mut reader: impl Read + Seek) -> Result<Module> {
             let stm = STMModule::load(reader)?;
             return Ok(stm.module());
         }
-
     }
+
+    // Try MOD
+    reader.seek(SeekFrom::Start(1080))?;
+    reader.read_exact(&mut magic)?;
+    reader.seek(SeekFrom::Start(0))?;
+    if &magic == b"M.K." || &magic == b"M!K!"
+    || &magic == b"M&K!" || &magic == b"N.T." {
+        let _mod = MODModule::load(reader)?;
+        return Ok(_mod.module());
+    }
+    
+
 
     Err(anyhow!("Unrecognized or unsupported module format"))
 }

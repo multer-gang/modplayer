@@ -109,7 +109,7 @@ pub enum LoopType {
 
 #[derive(Debug)]
 pub enum PlaybackMode {
-    MOD,
+    MOD(MODOptions),
     S3M(S3MOptions),
     XM,
     IT,
@@ -119,6 +119,11 @@ pub enum PlaybackMode {
 #[derive(Debug)]
 pub struct S3MOptions {
     pub gus: bool
+}
+
+#[derive(Debug)]
+pub struct MODOptions {
+    pub amiga: bool
 }
 
 #[derive(Debug, Clone)]

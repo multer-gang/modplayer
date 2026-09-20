@@ -143,7 +143,7 @@ fn vec_sinc_fast(vec: &Vec<i16>, quality: i32, index: f32) -> f32 {
     // Check if we can avoid bounds checking for the inner samples
     let start_idx = ix + 1 - quality;
     let end_idx = ix + quality;
-    
+
     if start_idx >= 0 && end_idx < vec_len {
         // Fast path: no bounds checking needed
         for i in 1 - quality..quality + 1 {
@@ -215,6 +215,7 @@ impl Channel<'_> {
                     self.s3m_effect_memory = value,
                 super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample =>
                     self.porta_memory = value,
+                super::module::PlaybackMode::MOD(_) => {}
                 _ => todo!(),
             }
         } else {
@@ -223,6 +224,7 @@ impl Channel<'_> {
                     value = self.s3m_effect_memory,
                 super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample =>
                     value = self.porta_memory,
+                super::module::PlaybackMode::MOD(_) => {}
                 _ => todo!(),
             }
         }
@@ -273,7 +275,7 @@ impl Channel<'_> {
             match self.module.mode {
                 super::module::PlaybackMode::S3M(_) =>
                     self.s3m_effect_memory = value,
-                super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample =>
+                super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample | super::module::PlaybackMode::MOD(_) =>
                     self.porta_memory = value,
                 _ => todo!(),
             }
@@ -281,7 +283,7 @@ impl Channel<'_> {
             match self.module.mode {
                 super::module::PlaybackMode::S3M(_) =>
                     value = self.s3m_effect_memory,
-                super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample =>
+                super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample | super::module::PlaybackMode::MOD(_) =>
                     value = self.porta_memory,
                 _ => todo!(),
             }
@@ -378,6 +380,7 @@ impl Channel<'_> {
                     self.s3m_effect_memory = value,
                 super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample =>
                     self.volume_memory = value,
+                super::module::PlaybackMode::MOD(_) => {},
                 _ => todo!(),
             }
         } else {
@@ -386,6 +389,7 @@ impl Channel<'_> {
                     value = self.s3m_effect_memory,
                 super::module::PlaybackMode::IT | super::module::PlaybackMode::ITSample =>
                     value = self.volume_memory,
+                super::module::PlaybackMode::MOD(_) => {},
                 _ => todo!(),
             }
         }
@@ -884,7 +888,7 @@ impl Player<'_> {
                 Effect::PatBreak(row) => {
                     pat_break_enabled = true;
                     pat_break_to = match self.module.mode {
-                        super::module::PlaybackMode::MOD | super::module::PlaybackMode::S3M(_) =>
+                        super::module::PlaybackMode::MOD(_) | super::module::PlaybackMode::S3M(_) =>
                             (row & 0xF) + ((row >> 4) * 10),
                         _ => row,
                     }
@@ -927,6 +931,9 @@ impl Player<'_> {
         if self.current_row as usize == self.module.patterns[self.current_pattern as usize].len() {
             self.current_row = 0;
             self.current_position += 1;
+            if self.current_position >= self.module.playlist.len() as u8 {
+                std::process::exit(0);
+            }
             self.current_pattern = self.module.playlist[self.current_position as usize];
 
             loop {
